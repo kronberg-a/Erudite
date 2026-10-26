@@ -1,10 +1,10 @@
 # Erudite
 
-A local-first vocabulary application built with React, TypeScript, Vite, Tailwind CSS, and Lucide. No account or API key needed.
+A local-first vocabulary and chess opening trainer built with React, TypeScript, Vite, Tailwind CSS, and Lucide. Vocabulary and local chess training need no account. The optional Lichess opening explorer requires a Lichess API token.
 
 ## Run
 
-**Open directly:** download/clone the complete repository, then double-click `index.html`. The included `public/standalone/` JavaScript and CSS bundles let it run without Node.js or a local server. Keep these files alongside the HTML. You can also open `dist/index.html` after building. Translation still needs an internet connection; browser support for local-file storage and speech can vary.
+**Open directly:** download/clone the complete repository, then double-click `index.html`. The included `public/standalone/` JavaScript and CSS bundles let it run without Node.js or a local server. Keep these files alongside the HTML. You can also open `dist/index.html` after building. Translation still needs an internet connection; browser support for local-file storage and speech can vary. Use `pnpm dev` or `pnpm preview` for Chess: browsers require HTTP(S) to load the Stockfish Web Worker and WASM assets reliably.
 
 **Develop:**
 
@@ -27,6 +27,27 @@ pnpm preview
 Deploy the generated `dist/` directory to any static host. Relative asset paths support subdirectory hosting, including GitHub Pages. The app uses no server-side routes.
 
 `pnpm build` refreshes the checked-in `public/standalone/` bundles and packages `dist/`. Commit regenerated bundles with source changes so direct opening stays current. Vite development serves the TypeScript entry instead, with hot reload. The production build uses a classic script bundle rather than browser ES modules, which cannot be loaded reliably from `file://` URLs.
+
+## Chess
+
+Use the Words / Chess switch directly below the brand. The selected module persists under `erudite_active_app_mode`. Switching retains both live sessions. Chess calculations, delayed training moves and board callbacks pause while Words is active and resume on return. The shared header theme also controls chess panels, dialogs and settings.
+
+Chess preserves the procedural chesslines.de board, repertoire tree, annotations, PGN variation importer, training loop and Stockfish bot. The original `../chesslines.de` checkout remains unchanged. The imported chess interface retains its original German text. In its settings, export a full JSON backup or a PGN repertoire. Vocabulary backups and chess backups are separate.
+
+The explorer offers Lichess and Masters databases. Enter a valid Lichess API token in the database panel; it stays only in the mounted session, is sent only to `explorer.lichess.org`, and clears on reload. Create one at https://lichess.org/account/oauth/token/create with no extra scopes. Current authentication requirements are documented at https://lichess-org.github.io/api/#tag/Opening-Explorer.
+
+All vendor scripts, eight piece sets, and the six Stockfish 17.1 WASM chunks are served locally. The engine is about 79 MB before transfer compression. Vite development and preview set COOP/CORP headers; configure the same headers on your deployment host. Third-party notices are in `THIRD_PARTY.md` and beside the assets.
+
+`src/components/chess/ChessView.tsx` hosts a persistent same-origin document to isolate upstream global variables, DOM IDs, inline handlers and CSS from React. `src/chess-engine/lifecycle.js` bridges visibility and theme, and adds PGN export and engine suggestion arrows. `timers.js` preserves pending callbacks across module switches. The original core chess algorithms remain procedural.
+
+For browser verification, run the app in another terminal, then:
+
+```sh
+pnpm exec playwright install chromium
+pnpm test:chess
+```
+
+On Windows the smoke test uses installed Edge by default. Set `ERUDITE_BROWSER_CHANNEL=chrome` for Chrome, or use a different Playwright browser channel. Set `ERUDITE_TEST_URL` to test a production preview or another port. Screenshots are saved to `test-results/`. The smoke test runs real Stockfish, checks all six chunk downloads, PGN import/export, training, MultiPV analysis and best-move arrows, theme synchronization, preserved sessions and mobile layout. Explorer authentication and rendering use fixture responses; a live authenticated query requires your own token.
 
 ## Learning
 

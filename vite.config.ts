@@ -21,6 +21,14 @@ export default defineConfig(({ command }) => ({
     },
   ],
   base: "./",
+  server: { headers: {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  } },
+  preview: { headers: {
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  } },
   define:
     command === "build"
       ? { "process.env.NODE_ENV": JSON.stringify("production") }

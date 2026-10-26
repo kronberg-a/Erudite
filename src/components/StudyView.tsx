@@ -33,6 +33,7 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { needsTyping } from "../core/typing";
 import { TypingCard } from "./TypingCard";
 interface Props {
+  active?: boolean;
   pair: PairData;
   settings: Settings;
   update: (p: PairData, reviewOrder?: number) => void;
@@ -52,6 +53,7 @@ interface Undo {
   completed: number;
 }
 export function StudyView({
+  active = true,
   pair,
   settings,
   update,
@@ -187,7 +189,7 @@ export function StudyView({
     action,
     typing ? next : reveal,
     undo,
-    started && (!typing || revealed),
+    active && started && (!typing || revealed),
   );
   const { drag, handlers } = useSwipeGesture(
     action,

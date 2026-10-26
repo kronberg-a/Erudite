@@ -1,0 +1,2 @@
+src/chess-engine/* text eol=lf
+*.wasm binary

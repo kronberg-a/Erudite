@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BookOpen,
   ChevronDown,
+  Crown,
   Layers,
   Moon,
   Plus,
@@ -25,9 +26,28 @@ import { StudyView } from "./components/StudyView";
 import { CategoryView } from "./components/CategoryView";
 import { WordForm } from "./components/WordForm";
 import { SettingsView } from "./components/SettingsView";
+import { ChessView } from "./components/chess/ChessView";
+type AppMode = "words" | "chess";
 type Page = "learn" | "categories" | "add" | "settings";
 const initial = loadData();
 export default function App() {
+  const [appMode, setAppMode] = useState<AppMode>(() => {
+    try {
+      return localStorage.getItem("erudite_active_app_mode") === "chess" ? "chess" : "words";
+    } catch {
+      return "words";
+    }
+  });
+  const [chessOpened, setChessOpened] = useState(appMode === "chess");
+  const switchMode = (mode: AppMode) => {
+    setAppMode(mode);
+    if (mode === "chess") setChessOpened(true);
+    try {
+      localStorage.setItem("erudite_active_app_mode", mode);
+    } catch {
+      // Switching still works for this session when storage is unavailable.
+    }
+  };
   const [data, setData] = useState<AppData>(initial.data);
   const [storageError, setStorageError] = useState(initial.error);
   const [page, setPage] = useState<Page>("learn");
@@ -86,8 +106,18 @@ export default function App() {
     { id: "add", icon: Plus },
     { id: "settings", icon: Settings2 },
   ] as const;
+  const modeSwitcher = (
+    <div className="app-mode-switch" role="group" aria-label="Application mode">
+      <button type="button" aria-pressed={appMode === "words"} onClick={() => switchMode("words")}>
+        <BookOpen size={15} />Words
+      </button>
+      <button type="button" aria-pressed={appMode === "chess"} onClick={() => switchMode("chess")}>
+        <Crown size={15} />Chess
+      </button>
+    </div>
+  );
   return (
-    <div className="app-shell">
+    <div className={`app-shell mode-${appMode}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -104,9 +134,15 @@ export default function App() {
             erudite<span className="brand-period">.</span>
           </span>
         </a>
+        {modeSwitcher}
         <p className="brand-tagline">{t("tagline")}</p>
         <p className="nav-caption">{t("workspace")}</p>
-        <nav aria-label={t("workspace")}>
+        {appMode === "chess" && (
+          <p className="chess-sidebar-note">
+            Opening repertoires<br />Line training<br />Stockfish analysis
+          </p>
+        )}
+        <nav hidden={appMode !== "words"} aria-label={t("workspace")}>
           {nav.map(({ id, icon: Icon }) => (
             <button
               key={id}
@@ -121,7 +157,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="sidebar-pair">
+          <div className="sidebar-pair" hidden={appMode !== "words"}>
             <span className="language-code">
               {s.targetLanguage.toUpperCase()}
             </span>
@@ -145,11 +181,14 @@ export default function App() {
           <span className="breadcrumb">
             {t("workspace")}
             <span>/</span>
-            <strong>{t(page)}</strong>
+            <strong>{appMode === "chess" ? "Chess" : t(page)}</strong>
           </span>
-          <span className="mobile-brand">erudite.</span>
+          <div className="mobile-mode-brand">
+            <span className="mobile-brand">erudite.</span>
+            {modeSwitcher}
+          </div>
           <div className="topbar-actions">
-            <div className="header-language">
+            <div className="header-language" hidden={appMode !== "words"}>
               <span className="language-code">
                 {s.targetLanguage.toUpperCase()}
               </span>
@@ -185,7 +224,15 @@ export default function App() {
             </button>
           </div>
         </header>
+        {chessOpened && (
+          <ChessView
+            active={appMode === "chess"}
+            theme={s.theme}
+            toggleTheme={() => changeSettings({ theme: s.theme === "light" ? "dark" : "light" })}
+          />
+        )}
         <main
+          hidden={appMode !== "words"}
           key={`${key}-${generation}`}
           className={`main-content page-${page}`}
         >
@@ -206,6 +253,7 @@ export default function App() {
                   ? practiceRequest.selection
                   : undefined
               }
+              active={appMode === "words"}
               pair={pair}
               settings={s}
               reviewOrder={data.reviewOrder}
@@ -246,7 +294,7 @@ export default function App() {
             />
           )}
         </main>
-        <footer className="desktop-footer">
+        <footer className="desktop-footer" hidden={appMode !== "words"}>
           <span>ERUDITE</span>
           <span>{t("tagline")}</span>
           <span>
@@ -255,7 +303,7 @@ export default function App() {
           </span>
         </footer>
       </div>
-      <nav className="bottom-nav" aria-label={t("workspace")}>
+      <nav className="bottom-nav" hidden={appMode !== "words"} aria-label={t("workspace")}>
         {nav.map(({ id, icon: Icon }) => (
           <button
             key={id}

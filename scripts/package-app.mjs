@@ -13,5 +13,5 @@ await cp(join(root, "public"), output, { recursive: true });
 const html = await readFile(join(root, "index.html"), "utf8");
 await writeFile(join(output, "index.html"), html.replaceAll("./public/", "./"));
 console.log(
-  "Packaged dist/index.html. Both HTML entry points support direct file opening.",
+  "Packaged dist/index.html with local vocabulary and chess assets.",
 );
