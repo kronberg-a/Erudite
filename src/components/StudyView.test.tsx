@@ -162,6 +162,8 @@ describe("typing review lifecycle", () => {
   it("reveals incorrect character differences and supports a know override", () => {
     setup();
     key(input("cafe"), "Enter");
+    key(input("cafe"), "Enter");
+    key(input("cafe"), "Enter");
     expect(container.textContent).toContain("Not quite");
     expect(container.querySelector(".answer-diff del")?.textContent).toBe("e");
     expect(updates).not.toHaveBeenCalled();
@@ -171,6 +173,70 @@ describe("typing review lifecycle", () => {
       status: "REVIEW",
       easeFactor: 2.5,
     });
+  });
+  it("allows two retries without revealing or mutating progress, then pauses after the third miss", () => {
+    setup();
+    for (let miss = 1; miss <= 2; miss++) {
+      key(input("wrong"), "Enter");
+      expect(container.textContent).toContain(
+        `Attempts remaining: ${3 - miss}`,
+      );
+      expect(container.querySelector(".typing-feedback")).toBeNull();
+      expect(container.querySelector("article")?.textContent).not.toContain(
+        "café",
+      );
+      expect(
+        container.querySelector('[aria-label="Listen to pronunciation"]'),
+      ).toBeNull();
+      expect(speak).not.toHaveBeenCalled();
+      expect(updates).not.toHaveBeenCalled();
+    }
+    click("Check");
+    expect(
+      container.querySelector(".typing-feedback.incorrect"),
+    ).not.toBeNull();
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(updates).not.toHaveBeenCalled();
+    click("Next");
+    advanceTime();
+    expect(updates.mock.calls[0][0].words[0]).toMatchObject({
+      status: "LEARNING",
+      step: 0,
+      easeFactor: 2.3,
+    });
+    expect(container.textContent).toContain("Attempts remaining: 3");
+  });
+  it.each([1, 2])(
+    "accepts a correct answer after %i misses without auto-advancing",
+    (misses) => {
+      setup();
+      for (let miss = 0; miss < misses; miss++) key(input("wrong"), "Enter");
+      key(input("café"), "Enter");
+      expect(
+        container.querySelector(".typing-feedback.correct"),
+      ).not.toBeNull();
+      expect(updates).not.toHaveBeenCalled();
+      expect(speak).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("keeps the hint flag and attempt count when changing input modes", () => {
+    setup();
+    key(input("wrong"), "Enter");
+    key(input("wrong"), "Tab");
+    const select = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Answer input"]',
+    )!;
+    act(() => {
+      select.value = "TILES";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("Attempts remaining: 2");
+    act(() => {
+      select.value = "KEYBOARD";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    key(input("café"), "Enter");
+    expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
   });
   it("Escape reveals without committing, then Next applies a normal failure", () => {
     setup({ status: "LEARNING", step: 2, easeFactor: 2.1 });

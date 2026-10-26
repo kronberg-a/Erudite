@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+.typing-attempts {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 12px;
+  text-align: center;
+}
+.typing-attempts span {
+  color: var(--negative);
+}
+.typing-input[aria-invalid="true"] {
+  border-color: var(--negative);
+}
+
 :root {
   --status-know: var(--positive);
   --status-repeat: var(--negative);

@@ -760,6 +760,22 @@ const rows = {
     "Invio: verifica · Tab: suggerimento · Esc: risposta",
     "Intro: comprobar · Tab: pista · Escape: respuesta",
   ],
+  tryAgain: [
+    "Not quite. Try again.",
+    "Не совсем. Попробуйте ещё раз.",
+    "Noch nicht richtig. Versuch es noch einmal.",
+    "Pas tout à fait. Réessayez.",
+    "Non proprio. Riprova.",
+    "No del todo. Inténtalo de nuevo.",
+  ],
+  attemptsRemaining: [
+    "Attempts remaining",
+    "Осталось попыток",
+    "Verbleibende Versuche",
+    "Tentatives restantes",
+    "Tentativi rimasti",
+    "Intentos restantes",
+  ],
 } satisfies Record<string, string[]>;
 export type TextKey = keyof typeof rows;
 const indices: Record<Language, number> = {

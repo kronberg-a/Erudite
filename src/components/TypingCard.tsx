@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { ArrowRight, CircleHelp, Volume2 } from "lucide-react";
 import type { Evaluation, Settings, TypingInput, WordCard } from "../types";
@@ -54,6 +54,9 @@ export function TypingCard({
 }: Props) {
   const [input, setInput] = useState("");
   const [usedHint, setUsedHint] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const attemptCount = useRef(0);
+  const attemptStatusId = useId();
   const [tiles] = useState(() => {
     const characters = Array.from(answerTarget(card.targetWord)).map(
       (char, id) => ({ char, id }),
@@ -105,17 +108,25 @@ export function TypingCard({
   };
   const submit = (giveUp = false) => {
     if (evaluation || submitted.current) return;
+    const result = giveUp
+      ? "INCORRECT"
+      : evaluateAnswer(
+          input,
+          card.targetWord,
+          settings.strictAccents,
+          usedHint,
+        );
+    if (!giveUp && result === "INCORRECT") {
+      attemptCount.current += 1;
+      setFailedAttempts(attemptCount.current);
+      if (attemptCount.current < 3) {
+        focusAnswer();
+        inputRef.current?.select();
+        return;
+      }
+    }
     submitted.current = true;
-    onEvaluate(
-      giveUp
-        ? "INCORRECT"
-        : evaluateAnswer(
-            input,
-            card.targetWord,
-            settings.strictAccents,
-            usedHint,
-          ),
-    );
+    onEvaluate(result);
   };
   const keydown = (event: KeyboardEvent) => {
     if (
@@ -187,6 +198,8 @@ export function TypingCard({
               maxLength={200}
               lang={settings.targetLanguage}
               aria-label={t("answer")}
+              aria-invalid={failedAttempts > 0}
+              aria-describedby={attemptStatusId}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
@@ -201,6 +214,7 @@ export function TypingCard({
                 tabIndex={0}
                 role="group"
                 aria-label={t("answer")}
+                aria-describedby={attemptStatusId}
               >
                 {!selected.length && (
                   <span className="muted">{t("answer")}</span>
@@ -253,6 +267,10 @@ export function TypingCard({
               </div>
             </>
           )}
+          <p id={attemptStatusId} className="typing-attempts" role="status">
+            {failedAttempts > 0 && <span>{t("tryAgain")} </span>}
+            {t("attemptsRemaining")}: {3 - failedAttempts}
+          </p>
           <div className="typing-controls">
             <button
               className="text-button"
