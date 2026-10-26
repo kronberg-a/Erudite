@@ -20,8 +20,13 @@ import type {
   WordCard,
 } from "../types";
 import type { T } from "../i18n/translations";
-import { reviewCard } from "../core/srsEngine";
-import { advanceQueue, buildStudyQueue, localDay } from "../core/queueManager";
+import { reviewCard, reinsertionDistance } from "../core/srsEngine";
+import {
+  availableMode,
+  buildStudyQueue,
+  continueQueue,
+  selectedWords,
+} from "../core/queueManager";
 import { speak } from "../core/speech";
 import { useSwipeGesture } from "../hooks/useSwipeGesture";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -30,7 +35,8 @@ import { TypingCard } from "./TypingCard";
 interface Props {
   pair: PairData;
   settings: Settings;
-  update: (p: PairData) => void;
+  update: (p: PairData, reviewOrder?: number) => void;
+  reviewOrder: number;
   t: T;
   openLibrary: () => void;
   changeSettings: (patch: Partial<Settings>) => void;
@@ -41,7 +47,8 @@ interface Undo {
   previousCardState: WordCard;
   previousQueueIndex: number;
   queue: string[];
-  introduced: PairData["introduced"];
+  reviewOrder: number;
+  mode: Mode;
   completed: number;
 }
 export function StudyView({
@@ -52,6 +59,7 @@ export function StudyView({
   openLibrary,
   changeSettings,
   initialSelection,
+  reviewOrder,
 }: Props) {
   const [mode, setMode] = useState<Mode>("mixed");
   const [selection, setSelection] = useState<StudySelection | undefined>(
@@ -59,11 +67,11 @@ export function StudyView({
   );
   const [queue, setQueue] = useState<string[]>([]);
   const [started, setStarted] = useState(false);
-  const [initial, setInitial] = useState(0);
   const [completed, setCompleted] = useState(0);
   const [history, setHistory] = useState<Undo[]>([]);
   const [revealed, setRevealed] = useState(false);
-  const [exit, setExit] = useState<Action | null>(null);
+  const [lastAction, setLastAction] = useState<Action | null>(null);
+  const [modeNotice, setModeNotice] = useState(false);
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
@@ -71,27 +79,13 @@ export function StudyView({
   const [turn, setTurn] = useState(0);
   const nextButton = useRef<HTMLButtonElement>(null);
   const evaluated = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lock = useRef(false);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const today = localDay();
-  const dailyRemaining = Math.max(
-    0,
-    settings.dailyNewCardsCap - (pair.introduced[today]?.length ?? 0),
-  );
-  const available = buildStudyQueue(pair, mode, dailyRemaining, selection);
-  const due = buildStudyQueue(pair, "review", 0, selection).length;
-  const fresh = buildStudyQueue(pair, "new", Infinity, selection).length;
-  const dailyLimited =
-    !selection && dailyRemaining === 0 && fresh > 0 && mode !== "review";
-  const mastered = pair.words.filter(
-    (w) =>
-      w.status === "MASTERED" &&
-      (!selection ||
-        (selection.kind === "word"
-          ? w.id === selection.id
-          : w.categoryIds.includes(selection.id))),
-  ).length;
+  const committedTurn = useRef(-1);
+  const available = buildStudyQueue(pair, mode, selection);
+  const inProgress = buildStudyQueue(pair, "review", selection).length;
+  const fresh = buildStudyQueue(pair, "new", selection).length;
+  const pool = selectedWords(pair, selection);
+  const mastered = pool.filter((w) => w.status === "MASTERED").length;
+  const allMastered = pool.length > 0 && mastered === pool.length;
   const card = pair.words.find((w) => w.id === queue[0]);
   const typing = !!card && needsTyping(card, settings.studyMode);
   const resetTurn = () => {
@@ -108,7 +102,6 @@ export function StudyView({
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
   const start = () => {
     setQueue(available);
-    setInitial(available.length);
     setStarted(true);
     setCompleted(0);
     setHistory([]);
@@ -116,70 +109,75 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!card || lock.current || (typing && !revealed)) return;
-    lock.current = true;
-    setExit(a);
+    if (!card || committedTurn.current === turn || (typing && !revealed))
+      return;
+    committedTurn.current = turn;
+    setLastAction(a);
     setReverse(false);
-    timer.current = setTimeout(() => {
-      const now = Date.now();
-      const day = localDay(new Date(now));
-      const assisted = typing && evaluation === "ASSISTED" && a === "repeat";
-      const updated = reviewCard(card, a, settings, now, { assisted });
-      setHistory((h) => [
-        ...h,
-        {
-          cardId: card.id,
-          previousCardState: card,
-          previousQueueIndex: 0,
-          queue: [...queue],
-          introduced: pair.introduced,
-          completed,
-        },
-      ]);
-      const introduced =
-        card.status === "NEW"
-          ? {
-              ...pair.introduced,
-              [day]: [...new Set([...(pair.introduced[day] ?? []), card.id])],
-            }
-          : pair.introduced;
-      update({
-        ...pair,
-        words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
-        introduced,
-      });
-      setQueue(advanceQueue(queue, updated, assisted ? 4 : 3));
-      if (updated.status !== "LEARNING") setCompleted((n) => n + 1);
-      resetTurn();
-      setAudioError(false);
-      setExit(null);
-      lock.current = false;
-    }, 150);
+    const assisted = typing && evaluation === "ASSISTED" && a === "repeat";
+    const updated = reviewCard(card, a, settings, reviewOrder + 1, {
+      assisted,
+    });
+    setHistory((h) => [
+      ...h,
+      {
+        cardId: card.id,
+        previousCardState: card,
+        previousQueueIndex: 0,
+        queue: [...queue],
+        reviewOrder,
+        mode,
+        completed,
+      },
+    ]);
+    const nextPair = {
+      ...pair,
+      words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
+    };
+    update(nextPair, reviewOrder + 1);
+    const continuation = continueQueue(
+      queue,
+      nextPair,
+      mode,
+      updated,
+      reinsertionDistance(card, a, assisted),
+      selection,
+    );
+    setQueue(continuation.queue);
+    setMode(continuation.mode);
+    if (continuation.switched) setModeNotice(true);
+    setCompleted((n) => n + 1);
+    resetTurn();
   };
   const undo = () => {
-    if (!history.length || lock.current) return;
+    if (!history.length) return;
     const previous = history[history.length - 1];
-    update({
-      ...pair,
-      words: pair.words.map((w) =>
-        w.id === previous.cardId ? previous.previousCardState : w,
-      ),
-      introduced: previous.introduced,
-    });
+    update(
+      {
+        ...pair,
+        words: pair.words.map((w) =>
+          w.id === previous.cardId ? previous.previousCardState : w,
+        ),
+      },
+      previous.reviewOrder,
+    );
     setQueue(previous.queue);
     setCompleted(previous.completed);
+    setMode(previous.mode);
+    setModeNotice(false);
+    setLastAction(null);
     setHistory(history.slice(0, -1));
     resetTurn();
     setReverse(true);
   };
   const reveal = () => {
-    if (card && !lock.current && !typing) setRevealed(true);
+    if (card && !typing) setRevealed(true);
   };
   const next = () => {
     if (evaluation) action(evaluation === "CORRECT" ? "know" : "repeat");
   };
   const evaluate = (result: Evaluation) => {
-    if (!card || evaluated.current || lock.current) return;
+    if (!card || evaluated.current) return;
     evaluated.current = true;
     setEvaluation(result);
     setRevealed(true);
@@ -194,7 +192,7 @@ export function StudyView({
   const { drag, handlers } = useSwipeGesture(
     action,
     reveal,
-    !!exit || (typing && !revealed),
+    typing && !revealed,
   );
   const tint =
     drag.y < -40 && Math.abs(drag.y) > Math.abs(drag.x)
@@ -203,11 +201,15 @@ export function StudyView({
         ? "know"
         : "repeat";
   const distance = tint === "master" ? -drag.y : Math.abs(drag.x);
-  const transform = exit
-    ? exit === "master"
-      ? "translateY(-110vh)"
-      : `translateX(${exit === "know" ? "" : "-"}110vw) rotate(${exit === "know" ? "" : "-"}16deg)`
-    : `translate(${drag.x}px, ${drag.y}px) rotate(${(drag.x / 100) * 8}deg)`;
+  const transform = `translate(${drag.x}px, ${drag.y}px) rotate(${(drag.x / 100) * 8}deg)`;
+  const changeMode = (requested: Mode) => {
+    const next = availableMode(pair, requested, selection);
+    setMode(next);
+    setModeNotice(next !== requested);
+    setHistory([]);
+    resetTurn();
+    if (started) setQueue(buildStudyQueue(pair, next, selection));
+  };
   return (
     <>
       <div className="page-heading">
@@ -233,6 +235,18 @@ export function StudyView({
                       : { kind: "word", id: value.slice(5) },
                 );
                 setStarted(false);
+                setMode(
+                  availableMode(
+                    pair,
+                    mode,
+                    value === "all"
+                      ? undefined
+                      : value.startsWith("category:")
+                        ? { kind: "category", id: value.slice(9) }
+                        : { kind: "word", id: value.slice(5) },
+                  ),
+                );
+                setModeNotice(false);
                 setQueue([]);
                 setHistory([]);
                 resetTurn();
@@ -285,15 +299,11 @@ export function StudyView({
             <select
               aria-label={t("session")}
               value={mode}
-              disabled={started && queue.length > 0}
-              onChange={(e) => {
-                setMode(e.target.value as Mode);
-                setStarted(false);
-              }}
+              onChange={(e) => changeMode(e.target.value as Mode)}
             >
               <option value="mixed">{t("mixed")}</option>
-              <option value="new">{t("new")}</option>
-              <option value="review">{t("review")}</option>
+              <option value="new">{t("newMode")}</option>
+              <option value="review">{t("reviewMode")}</option>
             </select>
             <ChevronDown size={15} />
           </div>
@@ -301,6 +311,11 @@ export function StudyView({
       </div>
       {selection && (
         <p className="practice-note">{t("selectedPracticeHint")}</p>
+      )}
+      {modeNotice && (
+        <p className="practice-note" role="status">
+          {t("modeSwitched")}
+        </p>
       )}
       <div className="summary-grid">
         <div>
@@ -311,7 +326,7 @@ export function StudyView({
         <div>
           <span className="stat-dot amber" />
           <span>{t("review")}</span>
-          <strong>{due.toString().padStart(2, "0")}</strong>
+          <strong>{inProgress.toString().padStart(2, "0")}</strong>
         </div>
         <div>
           <span className="stat-dot green" />
@@ -323,7 +338,7 @@ export function StudyView({
         <div className="session-bar">
           <button
             className="text-button"
-            disabled={!history.length || !!exit}
+            disabled={!history.length}
             onClick={undo}
           >
             <RotateCcw size={15} />
@@ -331,14 +346,14 @@ export function StudyView({
           </button>
           <span className="eyebrow">{t("session")}</span>
           <span className="session-count">
-            {started ? `${completed} / ${initial}` : `${available.length}`}{" "}
+            {started ? `${completed} ${t("practiced")}` : `${available.length}`}{" "}
             <span>{started ? `· ${queue.length} ${t("remaining")}` : ""}</span>
           </span>
         </div>
         <div className="progress-track">
           <div
             style={{
-              width: `${started && initial ? (completed / initial) * 100 : 0}%`,
+              width: `${pool.length ? (mastered / pool.length) * 100 : 0}%`,
             }}
           />
         </div>
@@ -347,9 +362,9 @@ export function StudyView({
             <div className="card-stack">
               <div className="stack-under" />
               <article
-                key={card.id}
+                key={`${card.id}-${turn}`}
                 {...handlers}
-                className={`flashcard ${typing ? "typing-flashcard" : ""} ${evaluation ? `grade-${evaluation.toLowerCase()}` : ""} ${revealed ? "revealed" : ""} ${reverse ? "reverse" : ""} ${drag.active ? "dragging" : ""}`}
+                className={`flashcard ${lastAction ? "advance-" + lastAction : ""} ${typing ? "typing-flashcard" : ""} ${evaluation ? `grade-${evaluation.toLowerCase()}` : ""} ${revealed ? "revealed" : ""} ${reverse ? "reverse" : ""} ${drag.active ? "dragging" : ""}`}
                 aria-label={
                   typing && !revealed
                     ? `${card.translations.join(" · ")}. ${t("typePrompt")}`
@@ -376,7 +391,7 @@ export function StudyView({
                           ? "learning"
                           : "review",
                     )}
-                    {card.status === "LEARNING" ? ` ${card.step}/3` : ""}
+                    {card.status !== "NEW" ? ` ${card.step}/5` : ""}
                   </span>
                 </div>
                 <span
@@ -470,7 +485,6 @@ export function StudyView({
               <div className="action-bar">
                 <button
                   className={`action-repeat ${typing && evaluation !== "CORRECT" ? "preselected" : ""}`}
-                  disabled={!!exit}
                   onClick={() => action("repeat")}
                 >
                   <ArrowLeft size={18} />
@@ -479,7 +493,7 @@ export function StudyView({
                 <button
                   ref={nextButton}
                   className={`action-reveal ${typing ? "action-next" : ""}`}
-                  disabled={!!exit || (!typing && revealed)}
+                  disabled={!typing && revealed}
                   onClick={typing ? next : reveal}
                 >
                   {typing ? <ArrowRight size={18} /> : <BookOpen size={18} />}
@@ -487,7 +501,6 @@ export function StudyView({
                 </button>
                 <button
                   className={`action-know ${typing && evaluation === "CORRECT" ? "preselected" : ""}`}
-                  disabled={!!exit}
                   onClick={() => action("know")}
                 >
                   <span>{t("know")}</span>
@@ -498,7 +511,6 @@ export function StudyView({
             {(!typing || revealed) && (
               <button
                 className="master-button"
-                disabled={!!exit}
                 onClick={() => action("master")}
               >
                 <ArrowUp size={14} />
@@ -509,21 +521,15 @@ export function StudyView({
         ) : (
           <div className="session-empty">
             <div className="empty-icon">
-              {started && initial ? (
-                <Check size={28} />
-              ) : (
-                <BookOpen size={28} />
-              )}
+              {allMastered ? <Check size={28} /> : <BookOpen size={28} />}
             </div>
-            <h2>{started && initial ? t("complete") : t("ready")}</h2>
+            <h2>{allMastered ? t("complete") : t("ready")}</h2>
             <p>
-              {started && initial
+              {allMastered
                 ? t("completeSub")
                 : available.length
                   ? `${available.length} ${t("remaining")}. ${t("studySub")}`
-                  : dailyLimited
-                    ? t("dailyLimitReached")
-                    : t("empty")}
+                  : t("empty")}
             </p>
             <button
               className="primary-button"
@@ -564,7 +570,6 @@ export function StudyView({
         {started && card && (
           <button
             className="end-session"
-            disabled={!!exit}
             onClick={() => {
               setStarted(false);
               setQueue([]);

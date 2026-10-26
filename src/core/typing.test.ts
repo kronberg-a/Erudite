@@ -79,13 +79,13 @@ describe("active recall validation", () => {
       );
     }
   });
-  it("preserves learning progress and ease on assisted repeats and inserts four cards ahead", () => {
+  it("preserves learning progress on assisted repeats and inserts four cards ahead", () => {
     const learning = {
       ...card,
       id: "a",
       status: "LEARNING" as const,
       step: 2,
-      easeFactor: 1.9,
+      repCount: 1,
     };
     const result = reviewCard(
       learning,
@@ -97,7 +97,7 @@ describe("active recall validation", () => {
     expect(result).toMatchObject({
       status: "LEARNING",
       step: 2,
-      easeFactor: 1.9,
+      repCount: 2,
     });
     expect(advanceQueue(["a", "b", "c", "d", "e", "f"], result, 4)).toEqual([
       "b",

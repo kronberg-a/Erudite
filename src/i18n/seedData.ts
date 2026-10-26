@@ -604,7 +604,6 @@ const ipa: Partial<Record<Language, string>> = {
 export function seedPair(source: Language, target: Language): PairData {
   return {
     categories: structuredClone(seedCategories),
-    introduced: {},
     words: concepts.map(([category, words, examples], index) => ({
       id: `${source}-${target}-${index}`,
       targetWord: words[target],
@@ -619,9 +618,8 @@ export function seedPair(source: Language, target: Language): PairData {
       categoryIds: [category],
       status: "NEW",
       step: 0,
-      interval: 0,
-      easeFactor: 2.5,
-      nextReviewDate: 0,
+      repCount: 0,
+      lastReviewedOrder: 0,
       createdAt: Date.now(),
     })),
   };

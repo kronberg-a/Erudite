@@ -5,7 +5,7 @@ import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedPair } from "./i18n/seedData";
 import { defaultSettings } from "./services/storage";
-import { localDay } from "./core/queueManager";
+
 import type { AppData } from "./types";
 vi.mock("./core/speech", () => ({ speak: vi.fn(() => true) }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,14 +24,14 @@ beforeEach(() => {
       targetWord: "Reset me",
       categoryIds: ["core"],
       status: "MASTERED",
-      interval: 100,
+      step: 5,
     },
     {
       ...pair.words[1],
       id: "spent",
       status: "REVIEW",
       categoryIds: ["core"],
-      nextReviewDate: Date.now() + 86400000,
+      step: 3,
     },
     {
       ...pair.words[2],
@@ -40,13 +40,13 @@ beforeEach(() => {
       categoryIds: ["core"],
     },
   ];
-  pair.introduced[localDay()] = ["reset"];
   const data: AppData = {
-    version: 1,
-    settings: { ...defaultSettings, dailyNewCardsCap: 1 },
+    version: 2,
+    reviewOrder: 0,
+    settings: { ...defaultSettings },
     pairs: { "en-de": pair },
   };
-  localStorage.setItem("erudite:v1", JSON.stringify(data));
+  localStorage.setItem("erudite:v2", JSON.stringify(data));
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -84,10 +84,26 @@ function fill(input: HTMLInputElement, value: string) {
   });
 }
 describe("new and reset word practice", () => {
+  it("resets mastered words and whole folders directly into the immediately available review pool", async () => {
+    await renderApp();
+    clickText("Vocabulary");
+    clickLabel("Reset to review: Reset me");
+    clickText("Reset to review");
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    expect(
+      current.pairs["en-de"].words.every(
+        (word) =>
+          word.status === "REVIEW" && word.step === 3 && word.repCount === 0,
+      ),
+    ).toBe(true);
+    clickLabel("Practice: Core vocabulary");
+    clickText("Start practice");
+    expect(container.querySelector("article")).not.toBeNull();
+  });
   it("does not expose the selected word in the typing-mode header", async () => {
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v1")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
     stored.settings.studyMode = "TYPE_ONLY";
-    localStorage.setItem("erudite:v1", JSON.stringify(stored));
+    localStorage.setItem("erudite:v2", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
     clickLabel("Reset progress: Reset me");
@@ -100,14 +116,12 @@ describe("new and reset word practice", () => {
       container.querySelector('[aria-label="Your answer"]'),
     ).not.toBeNull();
   });
-  it("shows the real new count and explains the exhausted daily allowance", async () => {
+  it("shows the real new count and allows unrestricted folder practice", async () => {
     await renderApp();
     expect(container.querySelector(".summary-grid")?.textContent).toContain(
       "New words01",
     );
-    expect(container.textContent).toContain(
-      "Your daily new-word allowance is used.",
-    );
+
     const select = container.querySelector<HTMLSelectElement>(
       '[aria-label="Practice selection"]',
     )!;
@@ -117,10 +131,10 @@ describe("new and reset word practice", () => {
     });
     clickText("Start practice");
     expect(container.querySelector("article")?.textContent).toContain(
-      "Older new word",
+      "die Zeit",
     );
   });
-  it("starts practice of a just-saved word instead of older seed words even with no allowance left", async () => {
+  it("starts practice of a just-saved word instead of older seed words without a daily allowance", async () => {
     await renderApp();
     clickText("Add word");
     fill(
@@ -143,25 +157,25 @@ describe("new and reset word practice", () => {
     clickText("Practice saved word");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("Neu");
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v1")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
     expect(
       stored.pairs["en-de"].words.find((w) => w.targetWord === "Neu")?.status,
     ).toBe("NEW");
   });
   it("makes reset words directly selectable, including from an excluded folder, without clearing unrelated progress", async () => {
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v1")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
     stored.pairs["en-de"].categories[0].isActiveForStudy = false;
-    localStorage.setItem("erudite:v1", JSON.stringify(stored));
+    localStorage.setItem("erudite:v2", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
     clickLabel("Reset progress: Reset me");
     clickLabel("Practice: Reset me");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
-    const current: AppData = JSON.parse(localStorage.getItem("erudite:v1")!);
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
     expect(
       current.pairs["en-de"].words.find((w) => w.id === "reset"),
-    ).toMatchObject({ status: "NEW", interval: 0, easeFactor: 2.5 });
+    ).toMatchObject({ status: "NEW", repCount: 0, lastReviewedOrder: 0 });
     expect(
       current.pairs["en-de"].words.find((w) => w.id === "spent")?.status,
     ).toBe("REVIEW");

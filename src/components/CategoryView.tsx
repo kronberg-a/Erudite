@@ -6,6 +6,7 @@ import {
   Folder,
   Plus,
   RotateCcw,
+  RotateCw,
   Search,
   X,
 } from "lucide-react";
@@ -194,6 +195,26 @@ export function CategoryView({
                 />
                 {t("active")}
               </label>
+              <div className="folder-reset-actions">
+                {(["NEW", "REVIEW"] as const).map((status) => (
+                  <button
+                    key={status}
+                    className="text-button"
+                    onClick={() =>
+                      update({
+                        ...pair,
+                        words: pair.words.map((word) =>
+                          word.categoryIds.includes(category.id)
+                            ? resetCard(word, status)
+                            : word,
+                        ),
+                      })
+                    }
+                  >
+                    {t(status === "NEW" ? "resetNew" : "resetReview")}
+                  </button>
+                ))}
+              </div>
             </section>
           );
         })}
@@ -252,6 +273,14 @@ export function CategoryView({
               <div className="row-actions">
                 <button
                   className="icon-button"
+                  title={t("resetReview")}
+                  aria-label={`${t("resetReview")}: ${w.targetWord}`}
+                  onClick={() => modify(resetCard(w, "REVIEW"))}
+                >
+                  <RotateCw size={16} />
+                </button>
+                <button
+                  className="icon-button"
                   title={t("practice")}
                   aria-label={`${t("practice")}: ${w.targetWord}`}
                   disabled={w.status === "MASTERED"}
@@ -275,7 +304,7 @@ export function CategoryView({
                     modify(
                       w.status === "MASTERED"
                         ? resetCard(w)
-                        : { ...w, status: "MASTERED" },
+                        : { ...w, status: "MASTERED", step: 5 },
                     )
                   }
                 >

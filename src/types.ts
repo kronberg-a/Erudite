@@ -18,9 +18,8 @@ export interface WordCard {
   categoryIds: string[];
   status: WordStatus;
   step: number;
-  interval: number;
-  easeFactor: number;
-  nextReviewDate: number;
+  repCount: number;
+  lastReviewedOrder: number;
   createdAt: number;
   lastStudiedAt?: number;
 }
@@ -34,7 +33,6 @@ export interface Settings {
   interfaceLanguage: Language;
   sourceLanguage: Language;
   targetLanguage: Language;
-  dailyNewCardsCap: number;
   instantMasterOnFirstTry: boolean;
   studyMode: "SWIPE_ONLY" | "TYPE_ONLY" | "MIXED";
   strictAccents: boolean;
@@ -43,10 +41,10 @@ export interface Settings {
 export interface PairData {
   words: WordCard[];
   categories: Category[];
-  introduced: Record<string, string[]>;
 }
 export interface AppData {
-  version: 1;
+  version: 2;
+  reviewOrder: number;
   settings: Settings;
   pairs: Record<string, PairData>;
 }

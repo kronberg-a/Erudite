@@ -2,6 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
+.folder-reset-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+.folder-reset-actions .text-button {
+  font-size: 10px;
+}
+.flashcard.advance-know {
+  animation: advance-know 150ms ease-out;
+}
+.flashcard.advance-repeat {
+  animation: advance-repeat 150ms ease-out;
+}
+.flashcard.advance-master {
+  animation: advance-master 150ms ease-out;
+}
+@keyframes advance-know {
+  from {
+    opacity: 0.5;
+    translate: -18px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes advance-repeat {
+  from {
+    opacity: 0.5;
+    translate: 18px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes advance-master {
+  from {
+    opacity: 0.5;
+    translate: 0 18px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
 .practice-note {
   font-size: 11px;
   color: var(--muted);
@@ -1243,7 +1293,7 @@ kbd {
 .word-table-header,
 .word-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 100px;
+  grid-template-columns: minmax(0, 1fr) 130px 132px;
   align-items: center;
   gap: 15px;
   padding: 13px 22px;

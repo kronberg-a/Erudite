@@ -87,15 +87,18 @@ function setup(patch: Partial<WordCard> = {}) {
   };
   function Harness() {
     const [state, setState] = useState(pair);
+    const [order, setOrder] = useState(0);
     return (
       <StudyView
         pair={state}
+        reviewOrder={order}
         settings={{
           ...defaultSettings,
           targetLanguage: "fr",
           studyMode: "TYPE_ONLY",
         }}
-        update={(p) => {
+        update={(p, nextOrder) => {
+          setOrder(nextOrder ?? order);
           updates(p);
           setState(p);
         }}
@@ -113,6 +116,64 @@ function advanceTime() {
   act(() => vi.advanceTimersByTime(150));
 }
 describe("typing review lifecycle", () => {
+  it("commits immediately, continuously cycles review cards, and stops only at mastery", () => {
+    setup({ status: "LEARNING", step: 2 });
+    for (let step = 3; step <= 5; step++) {
+      key(input("café"), "Enter");
+      click("Next");
+      expect(updates).toHaveBeenCalledTimes(step - 2);
+      expect(updates.mock.calls[step - 3][0].words[0]).toMatchObject({
+        step,
+        repCount: step - 2,
+        lastReviewedOrder: step - 2,
+        status: step === 5 ? "MASTERED" : "REVIEW",
+      });
+      if (step < 5)
+        expect(
+          container.querySelector('[aria-label="Your answer"]'),
+        ).not.toBeNull();
+    }
+    expect(container.querySelector("article")).toBeNull();
+    expect(container.textContent).toContain("All words mastered.");
+    click("Undo");
+    expect(
+      container.querySelector('[aria-label="Your answer"]'),
+    ).not.toBeNull();
+    expect(updates.mock.calls[3][0].words[0]).toMatchObject({
+      step: 4,
+      status: "REVIEW",
+      repCount: 2,
+      lastReviewedOrder: 2,
+    });
+  });
+  it("changes modes during practice and automatically continues when the new-only pool is consumed", () => {
+    setup();
+    const select = container.querySelector<HTMLSelectElement>(
+      '[aria-label="STUDY SESSION"]',
+    )!;
+    expect(select.disabled).toBe(false);
+    act(() => {
+      select.value = "new";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    key(input("café"), "Enter");
+    click("Next");
+    expect(select.value).toBe("review");
+    expect(container.textContent).toContain(
+      "Continuing with the remaining words in the other mode.",
+    );
+    expect(
+      container.querySelector('[aria-label="Your answer"]'),
+    ).not.toBeNull();
+    click("Undo");
+    expect(select.value).toBe("new");
+    expect(updates.mock.calls[1][0].words[0]).toMatchObject({
+      status: "NEW",
+      step: 0,
+      repCount: 0,
+      lastReviewedOrder: 0,
+    });
+  });
   it("hides the answer/audio, masks every occurrence, and waits after correct submission", () => {
     setup();
     expect(container.querySelector("article")?.textContent).not.toContain(
@@ -137,12 +198,12 @@ describe("typing review lifecycle", () => {
     advanceTime();
     expect(updates).toHaveBeenCalledTimes(1);
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({
-      status: "REVIEW",
-      interval: 7,
+      status: "LEARNING",
+      step: 1,
     });
   });
-  it("gives hinted correct answers a penalty-free repeat and resets the same card turn", () => {
-    setup({ status: "LEARNING", step: 1, easeFactor: 2.1 });
+  it("gives hinted correct answers a step-preserving repeat and resets the same card turn", () => {
+    setup({ status: "LEARNING", step: 1, repCount: 2 });
     const field = input("caf");
     key(field, "Tab");
     expect(field.value).toBe("café");
@@ -154,7 +215,7 @@ describe("typing review lifecycle", () => {
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({
       status: "LEARNING",
       step: 1,
-      easeFactor: 2.1,
+      repCount: 3,
     });
     expect(container.querySelector<HTMLInputElement>("input")?.value).toBe("");
     expect(container.textContent).not.toContain("Correct with a hint");
@@ -170,8 +231,8 @@ describe("typing review lifecycle", () => {
     key(button("Next"), "ArrowRight");
     advanceTime();
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({
-      status: "REVIEW",
-      easeFactor: 2.5,
+      status: "LEARNING",
+      repCount: 1,
     });
   });
   it("allows two retries without revealing or mutating progress, then pauses after the third miss", () => {
@@ -202,7 +263,7 @@ describe("typing review lifecycle", () => {
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({
       status: "LEARNING",
       step: 0,
-      easeFactor: 2.3,
+      repCount: 1,
     });
     expect(container.textContent).toContain("Attempts remaining: 3");
   });
@@ -239,7 +300,7 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
   });
   it("Escape reveals without committing, then Next applies a normal failure", () => {
-    setup({ status: "LEARNING", step: 2, easeFactor: 2.1 });
+    setup({ status: "LEARNING", step: 2, repCount: 2 });
     key(input(""), "Escape");
     expect(container.textContent).toContain("Not quite");
     expect(speak).toHaveBeenCalledTimes(1);
@@ -249,7 +310,7 @@ describe("typing review lifecycle", () => {
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({
       status: "LEARNING",
       step: 0,
-      easeFactor: 1.9,
+      repCount: 3,
     });
   });
   it("ignores repeated Enter during input and lets undo restore the previous scheduling state", () => {

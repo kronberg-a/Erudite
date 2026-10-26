@@ -2,7 +2,7 @@
 
 > **Project Name:** Erudite  
 > **Repository:** `kronberg-a/Erudite`  
-> **Role & Objective:** Production-ready, mobile-first, responsive vocabulary learning web application replicating the exact functional and algorithmic logic of the **ReWord** vocabulary app, upgraded with an ultra-minimalist, purely practical design system.
+> **Role & Objective:** Production-ready, mobile-first, responsive vocabulary learning web application using the user-specified continuous, on-demand recall algorithm with an ultra-minimalist, purely practical design system.
 
 ---
 
@@ -76,10 +76,9 @@ export interface WordCard {
   examples: SentenceExample[];
   categoryIds: string[]; // Folder / Category IDs
   status: WordStatus;
-  step: number; // Short-term learning step (0 to 3)
-  interval: number; // Days until next review
-  easeFactor: number; // Default: 2.5, Minimum: 1.3
-  nextReviewDate: number; // Timestamp in milliseconds
+  step: number; // Consecutive recalls toward mastery, 0 to 5
+  repCount: number; // Total committed Know/Repeat turns
+  lastReviewedOrder: number; // Global relative review-order tick
   createdAt: number;
   lastStudiedAt?: number;
 }
@@ -96,64 +95,40 @@ export interface UserSettings {
   interfaceLanguage: SupportedLanguage;
   sourceLanguage: SupportedLanguage;
   targetLanguage: SupportedLanguage;
-  dailyNewCardsCap: number; // Default e.g. 10 or 20
-  instantMasterOnFirstTry: boolean; // Settings toggle: true -> MASTERED, false -> REVIEW with 7-day interval
+  instantMasterOnFirstTry: boolean; // Otherwise start at LEARNING step 1
+  studyMode: 'SWIPE_ONLY' | 'TYPE_ONLY' | 'MIXED';
+  strictAccents: boolean;
   theme: 'light' | 'dark';
 }
 ```
 
 ---
 
-## 5. Spaced Repetition System (The ReWord Algorithm)
+## 5. Continuous On-Demand Progression (Current Architecture)
 
-### 5.1 Queue Construction Logic
-When initiating a study session:
-1. Filter `WordCard` items belonging to categories where `isActiveForStudy === true`.
-2. Determine active mode:
-   - **Mixed Mode (Default):**
-     - Due `REVIEW` cards: `status === 'REVIEW' && nextReviewDate <= Date.now()`
-     - Active `LEARNING` cards: `status === 'LEARNING'`
-     - Cap of `NEW` cards: `status === 'NEW'`, up to `dailyNewCardsCap`
-   - **New Words Only:** `status === 'NEW'`, sliced to cap.
-   - **Review Only:** Due `status === 'REVIEW'` cards + active `LEARNING` cards.
+This section supersedes the original calendar-based ReWord scheduling specification. There are no daily caps, future review dates, cooldowns, or time-based eligibility checks. Persist schema version 2 with a global reviewOrder counter; migrate v1 vocabulary and mastery safely. Old repetition totals are unknown and begin at zero on migration. Retain the old storage key as a recovery copy.
 
-### 5.2 State Transitions
+### 5.1 Continuous modes
+- All non-mastered words in active categories are available immediately. Explicit word/folder practice scopes the stream without changing inclusion preferences.
+- Mixed continuous interleaves three in-progress words and two NEW words.
+- New-only serves NEW words; review serves LEARNING and REVIEW, sorted by lowest step then oldest lastReviewedOrder.
+- The queue selector stays available during study. If a specific pool runs out while other non-mastered words remain, visibly switch to the remaining mode and continue immediately. Completion is shown only when every selected word is MASTERED; a genuinely empty selection offers vocabulary management.
 
-#### Positive Action ("I Know / Remembered" — Swipe Right / `→`)
-- **If `status === 'NEW'` (First Encounter):**
-  - If `settings.instantMasterOnFirstTry === true`:
-    - `status = 'MASTERED'`
-    - Excluded from future review queues.
-  - If `settings.instantMasterOnFirstTry === false`:
-    - `status = 'REVIEW'`
-    - `interval = 7`
-    - `nextReviewDate = Date.now() + 7 * 86400000`
-- **If `status === 'LEARNING'`:**
-  - `step = step + 1`
-  - If `step >= 3`:
-    - Graduate to `REVIEW`: `status = 'REVIEW'`, `interval = 1`, `nextReviewDate = Date.now() + 1 * 86400000`
-  - Else:
-    - Remains in `LEARNING`, queue moves forward.
-- **If `status === 'REVIEW'`:**
-  - `interval = Math.round(interval * easeFactor)`
-  - `easeFactor = easeFactor + 0.1`
-  - `nextReviewDate = Date.now() + interval * 86400000`
-  - If `interval > 90`:
-    - `status = 'MASTERED'`
+### 5.2 Grading and spacing
+- Every committed Know or Repeat increments repCount and records the next global order tick.
+- NEW + Know: MASTERED step 5 when instant mastery is enabled; otherwise LEARNING step 1, returning after 8 cards.
+- LEARNING + Know: increment step; return after 8 * step cards. At step 3 transition to REVIEW.
+- REVIEW + Know: increment step. Step 4 returns after 50 cards; step 5 becomes MASTERED and leaves the stream.
+- Repeat: LEARNING step 0, returning after 3 cards (within the requested 3–5 range).
+- Assisted correct typing preserves the current learning step and returns after 4 cards.
+- Master: immediately MASTERED step 5. It does not increment the recall total.
+- Short pools reinsert at the end and cycle immediately. Never wait for spacing positions to elapse.
+- Grading and persistence are synchronous. CSS-only 150ms transitions may animate but must not lock input or delay state mutations.
+- Undo restores the exact prior card, queue, mode, repetition total, and global order tick.
+- Individual words and entire folders can reset to NEW step 0 or REVIEW step 3, clearing their repetition counters.
 
-#### Negative Action ("Don't Know / Repeat" — Swipe Left / `←`)
-- `status = 'LEARNING'`
-- `step = 0`
-- `easeFactor = Math.max(1.3, easeFactor - 0.2)`
-- **Session Re-queue:** Re-insert the card into the current active session queue **3 to 5 cards ahead** (or at the end if fewer cards remain) so the user must repeat and pass it before completing the session.
-
-#### Instant Master Action ("Already Mastered / Exclude" — Swipe Up / `↑`)
-- `status = 'MASTERED'`
-- Card is permanently excluded from regular learning queues (can be manually reset in Category Management).
-
-#### Undo Action (Undo Button / `Ctrl+Z` / `Backspace`)
-- Maintains an undo stack of `{ cardId, previousCardState, previousQueueIndex }`.
-- Restores the previous card state and places it back at the front of the session deck with smooth reverse animation.
+### 5.3 Active recall
+Typing mode hides target word, transcription and audio until evaluation. Allow three submitted attempts per turn; only success, the third miss, or explicit Give up reveals the answer. Never commit or advance immediately after typing submission. The revealed card plays audio once and waits for Next, Enter/Space, or a grade override. Retain hints, accent handling, letter tiles, and character differences in all six interface languages.
 
 ---
 

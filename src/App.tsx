@@ -66,8 +66,12 @@ export default function App() {
         },
       };
     });
-  const update = (p: PairData) =>
-    setData((d) => ({ ...d, pairs: { ...d.pairs, [key]: p } }));
+  const update = (p: PairData, reviewOrder?: number) =>
+    setData((d) => ({
+      ...d,
+      reviewOrder: reviewOrder ?? d.reviewOrder,
+      pairs: { ...d.pairs, [key]: p },
+    }));
   const practice = (selection: StudySelection) => {
     setPracticeRequest({ pairKey: key, selection });
     setPage("learn");
@@ -204,6 +208,7 @@ export default function App() {
               }
               pair={pair}
               settings={s}
+              reviewOrder={data.reviewOrder}
               update={update}
               t={t}
               openLibrary={() => setPage("categories")}

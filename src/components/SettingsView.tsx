@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { AppData, Language, Settings } from "../types";
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
-import { hydrateData, validateData } from "../services/storage";
+import { hydrateData } from "../services/storage";
 export function LanguageSelect({
   label,
   value,
@@ -91,21 +91,6 @@ export function SettingsView({
               onChange={(targetLanguage) => changeSettings({ targetLanguage })}
             />
           </div>
-          <label>
-            {t("dailyCap")}
-            <select
-              value={s.dailyNewCardsCap}
-              onChange={(e) =>
-                changeSettings({ dailyNewCardsCap: Number(e.target.value) })
-              }
-            >
-              {[...new Set([5, 10, 15, 20, 30, 50, 100, s.dailyNewCardsCap])]
-                .sort((a, b) => a - b)
-                .map((v) => (
-                  <option key={v}>{v}</option>
-                ))}
-            </select>
-          </label>
           <div className="setting-toggle">
             <div>
               <label htmlFor="strict-accents">{t("strictAccents")}</label>
@@ -199,10 +184,8 @@ export function SettingsView({
                 setError(false);
                 try {
                   if (file.size > 10_000_000) throw new Error("Too large");
-                  const d: unknown = JSON.parse(await file.text());
-                  if (!validateData(d)) throw new Error("Invalid");
-                  if (window.confirm(t("importConfirm")))
-                    restore(hydrateData(d));
+                  const d = hydrateData(JSON.parse(await file.text()));
+                  if (window.confirm(t("importConfirm"))) restore(d);
                 } catch {
                   setError(true);
                 } finally {

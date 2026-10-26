@@ -5,72 +5,104 @@ import type {
   StudySelection,
   WordCard,
 } from "../types";
+
+export function selectedWords(
+  pair: PairData,
+  selection?: StudySelection,
+): WordCard[] {
+  if (selection)
+    return pair.words.filter((word) =>
+      selection.kind === "word"
+        ? word.id === selection.id
+        : word.categoryIds.includes(selection.id),
+    );
+  const active = new Set(
+    pair.categories.filter((c) => c.isActiveForStudy).map((c) => c.id),
+  );
+  return pair.words.filter((word) =>
+    word.categoryIds.some((id) => active.has(id)),
+  );
+}
 export function buildQueue(
   words: WordCard[],
   categories: Category[],
   mode: Mode,
-  cap: number,
-  now = Date.now(),
 ): string[] {
-  const active = new Set(
-    categories.filter((c) => c.isActiveForStudy).map((c) => c.id),
-  );
-  const available = words.filter((w) =>
-    w.categoryIds.some((id) => active.has(id)),
-  );
-  const review = available
-    .filter((w) => w.status === "REVIEW" && w.nextReviewDate <= now)
-    .sort((a, b) => a.nextReviewDate - b.nextReviewDate);
-  const learning = available.filter((w) => w.status === "LEARNING");
-  const fresh = available
-    .filter((w) => w.status === "NEW")
-    .slice(0, Math.max(0, cap));
-  return (
-    mode === "new"
-      ? fresh
-      : mode === "review"
-        ? [...review, ...learning]
-        : [...review, ...learning, ...fresh]
-  ).map((w) => w.id);
+  const available = selectedWords({ words, categories });
+  const fresh = available.filter((w) => w.status === "NEW");
+  const progress = available
+    .filter((w) => w.status === "LEARNING" || w.status === "REVIEW")
+    .sort(
+      (a, b) => a.step - b.step || a.lastReviewedOrder - b.lastReviewedOrder,
+    );
+  if (mode === "new") return fresh.map((w) => w.id);
+  if (mode === "review") return progress.map((w) => w.id);
+  const result: WordCard[] = [];
+  for (
+    let p = 0, n = 0;
+    p < progress.length || n < fresh.length;
+    p += 3, n += 2
+  )
+    result.push(...progress.slice(p, p + 3), ...fresh.slice(n, n + 2));
+  return result.map((w) => w.id);
 }
 export function buildStudyQueue(
   pair: PairData,
   mode: Mode,
-  cap: number,
   selection?: StudySelection,
-  now = Date.now(),
 ): string[] {
-  if (!selection)
-    return buildQueue(pair.words, pair.categories, mode, cap, now);
-  const words = pair.words.filter((word) =>
-    selection.kind === "word"
-      ? word.id === selection.id
-      : word.categoryIds.includes(selection.id),
-  );
-  // Explicit practice is scoped to the requested content, independent of the
-  // automatic daily allowance and folder inclusion toggles. SRS statuses/due dates still apply.
   return buildQueue(
-    words,
-    pair.categories.map((category) => ({
-      ...category,
-      isActiveForStudy: true,
-    })),
+    selectedWords(pair, selection),
+    pair.categories.map((c) => ({ ...c, isActiveForStudy: true })),
     mode,
-    Infinity,
-    now,
   );
 }
 export function advanceQueue(
   queue: string[],
   updated: WordCard,
-  distance = 3,
+  distance: number,
 ): string[] {
   const remaining = queue.slice(1).filter((id) => id !== updated.id);
-  // A learning card must achieve all three passes before the session can finish.
-  if (updated.status === "LEARNING")
+  if (updated.status !== "MASTERED")
     remaining.splice(Math.min(distance, remaining.length), 0, updated.id);
   return remaining;
 }
-export function localDay(now = new Date()): string {
-  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+export function continueQueue(
+  queue: string[],
+  pair: PairData,
+  mode: Mode,
+  updated: WordCard,
+  distance: number,
+  selection?: StudySelection,
+): { queue: string[]; mode: Mode; switched: boolean } {
+  const eligible = buildStudyQueue(pair, mode, selection);
+  const ids = new Set(eligible);
+  const next = advanceQueue(queue, updated, distance).filter((id) =>
+    ids.has(id),
+  );
+  const existing = new Set(next);
+  next.push(...eligible.filter((id) => !existing.has(id)));
+  if (
+    next.length ||
+    !selectedWords(pair, selection).some((w) => w.status !== "MASTERED")
+  )
+    return { queue: next, mode, switched: false };
+  const fallback = mode === "new" ? "review" : "new";
+  return {
+    queue: buildStudyQueue(pair, fallback, selection),
+    mode: fallback,
+    switched: true,
+  };
+}
+export function availableMode(
+  pair: PairData,
+  mode: Mode,
+  selection?: StudySelection,
+): Mode {
+  return buildStudyQueue(pair, mode, selection).length ||
+    !selectedWords(pair, selection).some((w) => w.status !== "MASTERED")
+    ? mode
+    : mode === "new"
+      ? "review"
+      : "new";
 }
