@@ -5,6 +5,7 @@ export function reviewCard(
   action: Action,
   settings: Pick<Settings, "instantMasterOnFirstTry">,
   now = Date.now(),
+  options: { assisted?: boolean } = {},
 ): WordCard {
   const next = { ...card, lastStudiedAt: now };
   if (action === "master") return { ...next, status: "MASTERED" };
@@ -12,10 +13,12 @@ export function reviewCard(
     return {
       ...next,
       status: "LEARNING",
-      step: 0,
+      step: options.assisted && card.status === "LEARNING" ? card.step : 0,
       interval: 0,
       nextReviewDate: now,
-      easeFactor: Math.max(1.3, Number((card.easeFactor - 0.2).toFixed(10))),
+      easeFactor: options.assisted
+        ? card.easeFactor
+        : Math.max(1.3, Number((card.easeFactor - 0.2).toFixed(10))),
     };
   if (card.status === "NEW")
     return settings.instantMasterOnFirstTry

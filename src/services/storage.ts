@@ -8,6 +8,8 @@ export const defaultSettings: Settings = {
   targetLanguage: "de",
   dailyNewCardsCap: 10,
   instantMasterOnFirstTry: false,
+  studyMode: "SWIPE_ONLY",
+  strictAccents: true,
   theme: "light",
 };
 export const pairKey = (source: Language, target: Language) =>
@@ -78,6 +80,9 @@ export function validateData(value: unknown): value is AppData {
     s.dailyNewCardsCap >= 1 &&
     s.dailyNewCardsCap <= 100 &&
     typeof s.instantMasterOnFirstTry === "boolean" &&
+    (s.studyMode === undefined ||
+      ["SWIPE_ONLY", "TYPE_ONLY", "MIXED"].includes(s.studyMode)) &&
+    (s.strictAccents === undefined || typeof s.strictAccents === "boolean") &&
     !!d.pairs &&
     typeof d.pairs === "object" &&
     !Array.isArray(d.pairs) &&
@@ -104,10 +109,23 @@ export function loadData(): { data: AppData; error: boolean } {
     if (!raw) return { data: initial, error: false };
     const parsed: unknown = JSON.parse(raw);
     if (!validateData(parsed)) throw new Error("Invalid storage");
-    return { data: parsed, error: false };
+    return { data: hydrateData(parsed), error: false };
   } catch {
     return { data: initial, error: true };
   }
+}
+// Older v1 datasets and backups gain additive settings without losing progress.
+export function hydrateData(data: AppData): AppData {
+  return {
+    ...data,
+    settings: {
+      ...defaultSettings,
+      ...data.settings,
+      studyMode: data.settings.studyMode ?? defaultSettings.studyMode,
+      strictAccents:
+        data.settings.strictAccents ?? defaultSettings.strictAccents,
+    },
+  };
 }
 export function saveData(data: AppData): boolean {
   try {

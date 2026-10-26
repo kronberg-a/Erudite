@@ -27,11 +27,15 @@ export function buildQueue(
         : [...review, ...learning, ...fresh]
   ).map((w) => w.id);
 }
-export function advanceQueue(queue: string[], updated: WordCard): string[] {
+export function advanceQueue(
+  queue: string[],
+  updated: WordCard,
+  distance = 3,
+): string[] {
   const remaining = queue.slice(1).filter((id) => id !== updated.id);
   // A learning card must achieve all three passes before the session can finish.
   if (updated.status === "LEARNING")
-    remaining.splice(Math.min(3, remaining.length), 0, updated.id);
+    remaining.splice(Math.min(distance, remaining.length), 0, updated.id);
   return remaining;
 }
 export function localDay(now = new Date()): string {

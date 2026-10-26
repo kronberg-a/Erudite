@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { AppData, Language, Settings } from "../types";
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
-import { validateData } from "../services/storage";
+import { hydrateData, validateData } from "../services/storage";
 export function LanguageSelect({
   label,
   value,
@@ -108,6 +108,37 @@ export function SettingsView({
           </label>
           <div className="setting-toggle">
             <div>
+              <label htmlFor="strict-accents">{t("strictAccents")}</label>
+              <p>{t("strictAccentsHint")}</p>
+            </div>
+            <input
+              id="strict-accents"
+              type="checkbox"
+              role="switch"
+              checked={s.strictAccents}
+              onChange={(e) =>
+                changeSettings({ strictAccents: e.target.checked })
+              }
+            />
+          </div>
+          <label>
+            {t("studyMode")}
+            <select
+              value={s.studyMode}
+              onChange={(e) =>
+                changeSettings({
+                  studyMode: e.target.value as Settings["studyMode"],
+                })
+              }
+            >
+              <option value="SWIPE_ONLY">{t("swipeOnly")}</option>
+              <option value="TYPE_ONLY">{t("typeOnly")}</option>
+              <option value="MIXED">{t("mixedRecall")}</option>
+            </select>
+          </label>
+          <p className="form-message">{t("mixedRecallHint")}</p>
+          <div className="setting-toggle">
+            <div>
               <label htmlFor="instant-master">{t("instant")}</label>
               <p>{t("instantHint")}</p>
             </div>
@@ -170,7 +201,8 @@ export function SettingsView({
                   if (file.size > 10_000_000) throw new Error("Too large");
                   const d: unknown = JSON.parse(await file.text());
                   if (!validateData(d)) throw new Error("Invalid");
-                  if (window.confirm(t("importConfirm"))) restore(d);
+                  if (window.confirm(t("importConfirm")))
+                    restore(hydrateData(d));
                 } catch {
                   setError(true);
                 } finally {

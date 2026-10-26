@@ -36,6 +36,8 @@ export interface Settings {
   targetLanguage: Language;
   dailyNewCardsCap: number;
   instantMasterOnFirstTry: boolean;
+  studyMode: "SWIPE_ONLY" | "TYPE_ONLY" | "MIXED";
+  strictAccents: boolean;
   theme: "light" | "dark";
 }
 export interface PairData {
@@ -50,3 +52,5 @@ export interface AppData {
 }
 export type Mode = "mixed" | "new" | "review";
 export type Action = "know" | "repeat" | "master";
+export type Evaluation = "CORRECT" | "ASSISTED" | "INCORRECT";
+export type TypingInput = "KEYBOARD" | "TILES";

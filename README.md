@@ -36,6 +36,14 @@ Start a mixed, new-only, or review-only session. Tap the card, press Space/Enter
 
 The scheduling engine follows the supplied ReWord specification: new known words become mastered or receive a seven-day review; learning words require three positive passes; review intervals multiply by ease, with mastery after 90 days; failure resets learning and reduces ease to a minimum of 1.3. Learning cards re-enter after three other cards, or at the end of a shorter queue. New-word caps are enforced across sessions per language pair and local calendar day. Undo restores that allowance.
 
+## Typing and active recall
+
+Choose **Recall mode** in the study header or Settings: **Swipe cards**, **Type every answer**, or **Mixed recall**. Mixed recall requires typing for learning cards; new and review cards retain standard swiping. The header also switches between direct keyboard input and shuffled letter tiles. Tapping an inserted tile returns it to the bank, including repeated letters and spaces.
+
+Typing cards show base-language translations and context without showing the target word, transcription, or pronunciation. Enter or Check evaluates the answer; Tab supplies the next correct character, and Escape reveals the answer as incorrect. Case and outer whitespace are ignored, and grammatical notes in target-word parentheses are excluded. Exact accents are required by default; disable this in Settings to accept base letters.
+
+Submission always pauses on the full revealed card and plays pronunciation once. Green answers default to Know. Amber hinted answers default to Repeat after four other cards, preserving ease and existing learning steps. Red answers show a character-level correction and default to the normal learning reset and ease penalty. Only Next, Enter/Space, a swipe, an arrow override, or an explicit action button commits a grade and moves the deck. Undo restores that committed mutation and queue. Old v1 storage and backups automatically gain the new settings without resetting vocabulary.
+
 ## Vocabulary and translation
 
 Enable folders for study, search target words and translations, create folders, edit words, reset progress, or mark individual words mastered. Add Word accepts a word in the learning language and translates into the base language after 500ms. Manual translations are editable; alternative results can be added. Optional sentences have a separate translation action. Requests are cancelled or ignored when stale so late responses cannot overwrite manual edits.

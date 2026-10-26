@@ -9,19 +9,30 @@ import {
   RotateCcw,
   Volume2,
 } from "lucide-react";
-import type { Action, Mode, PairData, Settings, WordCard } from "../types";
+import type {
+  Action,
+  Evaluation,
+  Mode,
+  PairData,
+  Settings,
+  TypingInput,
+  WordCard,
+} from "../types";
 import type { T } from "../i18n/translations";
 import { reviewCard } from "../core/srsEngine";
 import { advanceQueue, buildQueue, localDay } from "../core/queueManager";
 import { speak } from "../core/speech";
 import { useSwipeGesture } from "../hooks/useSwipeGesture";
 import { useKeyboard } from "../hooks/useKeyboard";
+import { needsTyping } from "../core/typing";
+import { TypingCard } from "./TypingCard";
 interface Props {
   pair: PairData;
   settings: Settings;
   update: (p: PairData) => void;
   t: T;
   openLibrary: () => void;
+  changeSettings: (patch: Partial<Settings>) => void;
 }
 interface Undo {
   cardId: string;
@@ -31,7 +42,14 @@ interface Undo {
   introduced: PairData["introduced"];
   completed: number;
 }
-export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
+export function StudyView({
+  pair,
+  settings,
+  update,
+  t,
+  openLibrary,
+  changeSettings,
+}: Props) {
   const [mode, setMode] = useState<Mode>("mixed");
   const [queue, setQueue] = useState<string[]>([]);
   const [started, setStarted] = useState(false);
@@ -42,6 +60,11 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
   const [exit, setExit] = useState<Action | null>(null);
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [inputMode, setInputMode] = useState<TypingInput>("KEYBOARD");
+  const [turn, setTurn] = useState(0);
+  const nextButton = useRef<HTMLButtonElement>(null);
+  const evaluated = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lock = useRef(false);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -65,6 +88,17 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
   ).length;
   const mastered = pair.words.filter((w) => w.status === "MASTERED").length;
   const card = pair.words.find((w) => w.id === queue[0]);
+  const typing = !!card && needsTyping(card, settings.studyMode);
+  const resetTurn = () => {
+    setEvaluation(null);
+    evaluated.current = false;
+    setTurn((n) => n + 1);
+    setRevealed(false);
+    setAudioError(false);
+  };
+  useEffect(() => {
+    if (evaluation) nextButton.current?.focus({ preventScroll: true });
+  }, [evaluation]);
   const category =
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
   const start = () => {
@@ -73,18 +107,19 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
     setStarted(true);
     setCompleted(0);
     setHistory([]);
-    setRevealed(false);
+    resetTurn();
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!card || lock.current) return;
+    if (!card || lock.current || (typing && !revealed)) return;
     lock.current = true;
     setExit(a);
     setReverse(false);
     timer.current = setTimeout(() => {
       const now = Date.now();
       const day = localDay(new Date(now));
-      const updated = reviewCard(card, a, settings, now);
+      const assisted = typing && evaluation === "ASSISTED" && a === "repeat";
+      const updated = reviewCard(card, a, settings, now, { assisted });
       setHistory((h) => [
         ...h,
         {
@@ -108,9 +143,9 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
         words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
         introduced,
       });
-      setQueue(advanceQueue(queue, updated));
+      setQueue(advanceQueue(queue, updated, assisted ? 4 : 3));
       if (updated.status !== "LEARNING") setCompleted((n) => n + 1);
-      setRevealed(false);
+      resetTurn();
       setAudioError(false);
       setExit(null);
       lock.current = false;
@@ -129,14 +164,33 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
     setQueue(previous.queue);
     setCompleted(previous.completed);
     setHistory(history.slice(0, -1));
-    setRevealed(false);
+    resetTurn();
     setReverse(true);
   };
   const reveal = () => {
-    if (card && !lock.current) setRevealed(true);
+    if (card && !lock.current && !typing) setRevealed(true);
   };
-  useKeyboard(action, reveal, undo, started);
-  const { drag, handlers } = useSwipeGesture(action, reveal, !!exit);
+  const next = () => {
+    if (evaluation) action(evaluation === "CORRECT" ? "know" : "repeat");
+  };
+  const evaluate = (result: Evaluation) => {
+    if (!card || evaluated.current || lock.current) return;
+    evaluated.current = true;
+    setEvaluation(result);
+    setRevealed(true);
+    setAudioError(!speak(card.targetWord, settings.targetLanguage));
+  };
+  useKeyboard(
+    action,
+    typing ? next : reveal,
+    undo,
+    started && (!typing || revealed),
+  );
+  const { drag, handlers } = useSwipeGesture(
+    action,
+    reveal,
+    !!exit || (typing && !revealed),
+  );
   const tint =
     drag.y < -40 && Math.abs(drag.y) > Math.abs(drag.x)
       ? "master"
@@ -157,21 +211,53 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
           <h1>{t("study")}</h1>
           <p className="subtitle">{t("studySub")}</p>
         </div>
-        <div className="mode-select">
-          <select
-            aria-label={t("session")}
-            value={mode}
-            disabled={started && queue.length > 0}
-            onChange={(e) => {
-              setMode(e.target.value as Mode);
-              setStarted(false);
-            }}
-          >
-            <option value="mixed">{t("mixed")}</option>
-            <option value="new">{t("new")}</option>
-            <option value="review">{t("review")}</option>
-          </select>
-          <ChevronDown size={15} />
+        <div className="study-selectors">
+          <label className="recall-mode-label">
+            {t("studyMode")}
+            <select
+              aria-label={t("studyMode")}
+              value={settings.studyMode}
+              disabled={started && queue.length > 0}
+              onChange={(e) =>
+                changeSettings({
+                  studyMode: e.target.value as Settings["studyMode"],
+                })
+              }
+            >
+              <option value="SWIPE_ONLY">{t("swipeOnly")}</option>
+              <option value="TYPE_ONLY">{t("typeOnly")}</option>
+              <option value="MIXED">{t("mixedRecall")}</option>
+            </select>
+          </label>
+          {settings.studyMode !== "SWIPE_ONLY" && (
+            <label className="recall-mode-label">
+              {t("inputMode")}
+              <select
+                aria-label={t("inputMode")}
+                value={inputMode}
+                onChange={(e) => setInputMode(e.target.value as TypingInput)}
+              >
+                <option value="KEYBOARD">{t("keyboard")}</option>
+                <option value="TILES">{t("tiles")}</option>
+              </select>
+            </label>
+          )}
+          <div className="mode-select">
+            <select
+              aria-label={t("session")}
+              value={mode}
+              disabled={started && queue.length > 0}
+              onChange={(e) => {
+                setMode(e.target.value as Mode);
+                setStarted(false);
+              }}
+            >
+              <option value="mixed">{t("mixed")}</option>
+              <option value="new">{t("new")}</option>
+              <option value="review">{t("review")}</option>
+            </select>
+            <ChevronDown size={15} />
+          </div>
         </div>
       </div>
       <div className="summary-grid">
@@ -221,8 +307,12 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
               <article
                 key={card.id}
                 {...handlers}
-                className={`flashcard ${revealed ? "revealed" : ""} ${reverse ? "reverse" : ""} ${drag.active ? "dragging" : ""}`}
-                aria-label={`${card.targetWord}. ${t("tap")}`}
+                className={`flashcard ${typing ? "typing-flashcard" : ""} ${evaluation ? `grade-${evaluation.toLowerCase()}` : ""} ${revealed ? "revealed" : ""} ${reverse ? "reverse" : ""} ${drag.active ? "dragging" : ""}`}
+                aria-label={
+                  typing && !revealed
+                    ? `${card.translations.join(" · ")}. ${t("typePrompt")}`
+                    : `${card.targetWord}. ${t(typing && revealed ? "next" : "tap")}`
+                }
                 tabIndex={0}
                 style={{
                   transform,
@@ -256,93 +346,123 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
                 >
                   {t(tint)}
                 </span>
-                <div className="card-prompt">
-                  <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
-                  {card.transcription && (
-                    <p className="transcription">{card.transcription}</p>
-                  )}
-                  <button
-                    className="audio-button"
-                    aria-label={t("listen")}
-                    title={t("listen")}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                {typing ? (
+                  <TypingCard
+                    key={turn}
+                    card={card}
+                    settings={settings}
+                    inputMode={inputMode}
+                    evaluation={evaluation}
+                    onEvaluate={evaluate}
+                    onListen={() =>
                       setAudioError(
                         !speak(card.targetWord, settings.targetLanguage),
-                      );
-                    }}
-                  >
-                    <Volume2 size={20} />
-                  </button>
-                  {audioError && <small role="status">{t("audioError")}</small>}
-                </div>
-                {revealed ? (
-                  <div className="card-answer">
-                    <p
-                      lang={settings.sourceLanguage}
-                      className="translation-text"
-                    >
-                      {card.translations.join(" · ")}
-                    </p>
-                    {card.examples.length > 0 && (
-                      <div className="context">
-                        <span className="eyebrow">{t("example")}</span>
-                        {card.examples.map((e, i) => (
-                          <div key={i}>
-                            <p lang={settings.targetLanguage}>
-                              {e.targetSentence}
-                            </p>
-                            <p lang={settings.sourceLanguage} className="muted">
-                              {e.translatedSentence}
-                            </p>
+                      )
+                    }
+                    audioError={audioError}
+                    t={t}
+                  />
+                ) : (
+                  <>
+                    <div className="card-prompt">
+                      <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
+                      {card.transcription && (
+                        <p className="transcription">{card.transcription}</p>
+                      )}
+                      <button
+                        className="audio-button"
+                        aria-label={t("listen")}
+                        title={t("listen")}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAudioError(
+                            !speak(card.targetWord, settings.targetLanguage),
+                          );
+                        }}
+                      >
+                        <Volume2 size={20} />
+                      </button>
+                      {audioError && (
+                        <small role="status">{t("audioError")}</small>
+                      )}
+                    </div>
+                    {revealed ? (
+                      <div className="card-answer">
+                        <p
+                          lang={settings.sourceLanguage}
+                          className="translation-text"
+                        >
+                          {card.translations.join(" · ")}
+                        </p>
+                        {card.examples.length > 0 && (
+                          <div className="context">
+                            <span className="eyebrow">{t("example")}</span>
+                            {card.examples.map((e, i) => (
+                              <div key={i}>
+                                <p lang={settings.targetLanguage}>
+                                  {e.targetSentence}
+                                </p>
+                                <p
+                                  lang={settings.sourceLanguage}
+                                  className="muted"
+                                >
+                                  {e.translatedSentence}
+                                </p>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                      </div>
+                    ) : (
+                      <div className="tap-hint">
+                        <span className="small-line" />
+                        {t("tap")}
+                        <kbd>Space</kbd>
                       </div>
                     )}
-                  </div>
-                ) : (
-                  <div className="tap-hint">
-                    <span className="small-line" />
-                    {t("tap")}
-                    <kbd>Space</kbd>
-                  </div>
+                  </>
                 )}
               </article>
             </div>
-            <div className="action-bar">
+            {(!typing || revealed) && (
+              <div className="action-bar">
+                <button
+                  className={`action-repeat ${typing && evaluation !== "CORRECT" ? "preselected" : ""}`}
+                  disabled={!!exit}
+                  onClick={() => action("repeat")}
+                >
+                  <ArrowLeft size={18} />
+                  <span>{t("repeat")}</span>
+                </button>
+                <button
+                  ref={nextButton}
+                  className={`action-reveal ${typing ? "action-next" : ""}`}
+                  disabled={!!exit || (!typing && revealed)}
+                  onClick={typing ? next : reveal}
+                >
+                  {typing ? <ArrowRight size={18} /> : <BookOpen size={18} />}
+                  <span>{t(typing ? "next" : "reveal")}</span>
+                </button>
+                <button
+                  className={`action-know ${typing && evaluation === "CORRECT" ? "preselected" : ""}`}
+                  disabled={!!exit}
+                  onClick={() => action("know")}
+                >
+                  <span>{t("know")}</span>
+                  <ArrowRight size={18} />
+                </button>
+              </div>
+            )}
+            {(!typing || revealed) && (
               <button
-                className="action-repeat"
+                className="master-button"
                 disabled={!!exit}
-                onClick={() => action("repeat")}
+                onClick={() => action("master")}
               >
-                <ArrowLeft size={18} />
-                <span>{t("repeat")}</span>
+                <ArrowUp size={14} />
+                {t("master")}
               </button>
-              <button
-                className="action-reveal"
-                disabled={!!exit || revealed}
-                onClick={reveal}
-              >
-                <BookOpen size={18} />
-                <span>{t("reveal")}</span>
-              </button>
-              <button
-                className="action-know"
-                disabled={!!exit}
-                onClick={() => action("know")}
-              >
-                <span>{t("know")}</span>
-                <ArrowRight size={18} />
-              </button>
-            </div>
-            <button
-              className="master-button"
-              disabled={!!exit}
-              onClick={() => action("master")}
-            >
-              <ArrowUp size={14} />
-              {t("master")}
-            </button>
+            )}
           </>
         ) : (
           <div className="session-empty">
@@ -374,13 +494,17 @@ export function StudyView({ pair, settings, update, t, openLibrary }: Props) {
             </button>
           </div>
         )}
-        {started && card && (
+        {started && card && typing && !revealed && (
+          <p className="typing-keyboard-hints">{t("typingShortcuts")}</p>
+        )}
+        {started && card && (!typing || revealed) && (
           <div className="keyboard-hints">
             <span>
               <kbd>←</kbd> {t("repeat")}
             </span>
             <span>
-              <kbd>Space</kbd> {t("reveal")}
+              <kbd>{typing ? "Enter / Space" : "Space"}</kbd>{" "}
+              {t(typing ? "next" : "reveal")}
             </span>
             <span>
               <kbd>→</kbd> {t("know")}

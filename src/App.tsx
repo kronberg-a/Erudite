@@ -179,6 +179,7 @@ export default function App() {
               update={update}
               t={t}
               openLibrary={() => setPage("categories")}
+              changeSettings={changeSettings}
             />
           )}{" "}
           {page === "categories" && (
