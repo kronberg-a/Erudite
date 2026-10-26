@@ -91,3 +91,18 @@ toggleAnalysisMenu = async function() {
     await eruditeToggleAnalysis();
     drawShapes();
 };
+
+// Sidebar actions use the same entry points as the original workspace buttons.
+let eruditeActionsAvailable = true;
+const eruditeSwitchUI = switchUI;
+switchUI = function(id) {
+    eruditeSwitchUI(id);
+    eruditeActionsAvailable = id === 'view-mode';
+    window.parent.postMessage({type: 'erudite-chess-navigation', available: eruditeActionsAvailable}, '*');
+};
+window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data?.type !== 'erudite-chess-action' || !eruditeActive || !eruditeActionsAvailable) return;
+    const actions = {new: startAddingLine, import: openImportPgn, train: openSelectionMode};
+    const action = actions[event.data.action];
+    if (Object.hasOwn(actions, event.data.action)) action();
+});

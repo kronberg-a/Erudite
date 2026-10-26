@@ -4,6 +4,8 @@ import {
   BookOpen,
   ChevronDown,
   Crown,
+  FileInput,
+  Play,
   Layers,
   Moon,
   Plus,
@@ -27,6 +29,7 @@ import { CategoryView } from "./components/CategoryView";
 import { WordForm } from "./components/WordForm";
 import { SettingsView } from "./components/SettingsView";
 import { ChessView } from "./components/chess/ChessView";
+import type { ChessActionRequest } from "./components/chess/ChessView";
 type AppMode = "words" | "chess";
 type Page = "learn" | "categories" | "add" | "settings";
 const initial = loadData();
@@ -38,6 +41,8 @@ export default function App() {
       return "words";
     }
   });
+  const [chessAction, setChessAction] = useState<ChessActionRequest | null>(null);
+  const [chessActionsAvailable, setChessActionsAvailable] = useState(false);
   const [chessOpened, setChessOpened] = useState(appMode === "chess");
   const switchMode = (mode: AppMode) => {
     setAppMode(mode);
@@ -106,6 +111,22 @@ export default function App() {
     { id: "add", icon: Plus },
     { id: "settings", icon: Settings2 },
   ] as const;
+  const chessNav = [
+    { action: "new", label: "Neu", icon: Plus },
+    { action: "import", label: "Import", icon: FileInput },
+    { action: "train", label: "Üben", icon: Play },
+  ] as const;
+  const chessButtons = chessNav.map(({ action, label, icon: Icon }) => (
+    <button
+      key={action}
+      className="nav-item"
+      disabled={!chessActionsAvailable}
+      onClick={() => setChessAction(previous => ({ action, id: (previous?.id ?? 0) + 1 }))}
+    >
+      <Icon size={19} />
+      <span>{label}</span>
+    </button>
+  ));
   const modeSwitcher = (
     <div className="app-mode-switch" role="group" aria-label="Application mode">
       <button type="button" aria-pressed={appMode === "words"} onClick={() => switchMode("words")}>
@@ -138,9 +159,7 @@ export default function App() {
         <p className="brand-tagline">{t("tagline")}</p>
         <p className="nav-caption">{t("workspace")}</p>
         {appMode === "chess" && (
-          <p className="chess-sidebar-note">
-            Opening repertoires<br />Line training<br />Stockfish analysis
-          </p>
+          <nav aria-label="Chess workspace">{chessButtons}</nav>
         )}
         <nav hidden={appMode !== "words"} aria-label={t("workspace")}>
           {nav.map(({ id, icon: Icon }) => (
@@ -227,6 +246,8 @@ export default function App() {
         {chessOpened && (
           <ChessView
             active={appMode === "chess"}
+            actionRequest={chessAction}
+            onActionsAvailable={setChessActionsAvailable}
             theme={s.theme}
             toggleTheme={() => changeSettings({ theme: s.theme === "light" ? "dark" : "light" })}
           />
@@ -303,6 +324,7 @@ export default function App() {
           </span>
         </footer>
       </div>
+      {appMode === "chess" && <nav className="bottom-nav chess-bottom-nav" aria-label="Chess workspace">{chessButtons}</nav>}
       <nav className="bottom-nav" hidden={appMode !== "words"} aria-label={t("workspace")}>
         {nav.map(({ id, icon: Icon }) => (
           <button

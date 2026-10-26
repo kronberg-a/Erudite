@@ -21,7 +21,7 @@ await frame.evaluate(()=>new Promise((resolve,reject)=>{
  engine.addEventListener('message',listen);engine.postMessage('isready');
 }));
 assert.equal(chunks.size,6);console.log('PASS: Stockfish ready, all six WASM chunks loaded');
-await frame.getByRole('button',{name:'Neu',exact:true}).click();
+await page.getByRole('button',{name:'Neu',exact:true}).click();
 await frame.locator('#category-input').fill('Smoke opening');
 await frame.locator('[data-square="e2"] img').dragTo(frame.locator('[data-square="e4"]'));
 await frame.waitForFunction(()=>game.history()[0] === 'e4');
@@ -33,7 +33,7 @@ await frame.locator('#category-input').fill('Edited opening');
 await frame.getByRole('button',{name:'Speichern',exact:true}).click();
 assert.equal(await frame.evaluate(()=>repertoire.white[0].category),'Edited opening');
 console.log('PASS: create/edit/save opening');
-await frame.getByRole('button',{name:'Import',exact:true}).click();
+await page.getByRole('button',{name:'Import',exact:true}).click();
 await frame.locator('#import-category-input').fill('PGN variations');
 await frame.locator('#import-pgn-input').fill('1. d4 d5 2. c4 (2. Nf3 Nf6) e6 *');
 await frame.waitForFunction(()=>parsedImportLines.length>=2);
