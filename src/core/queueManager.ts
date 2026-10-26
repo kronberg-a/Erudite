@@ -1,4 +1,10 @@
-import type { Category, Mode, WordCard } from "../types";
+import type {
+  Category,
+  Mode,
+  PairData,
+  StudySelection,
+  WordCard,
+} from "../types";
 export function buildQueue(
   words: WordCard[],
   categories: Category[],
@@ -26,6 +32,33 @@ export function buildQueue(
         ? [...review, ...learning]
         : [...review, ...learning, ...fresh]
   ).map((w) => w.id);
+}
+export function buildStudyQueue(
+  pair: PairData,
+  mode: Mode,
+  cap: number,
+  selection?: StudySelection,
+  now = Date.now(),
+): string[] {
+  if (!selection)
+    return buildQueue(pair.words, pair.categories, mode, cap, now);
+  const words = pair.words.filter((word) =>
+    selection.kind === "word"
+      ? word.id === selection.id
+      : word.categoryIds.includes(selection.id),
+  );
+  // Explicit practice is scoped to the requested content, independent of the
+  // automatic daily allowance and folder inclusion toggles. SRS statuses/due dates still apply.
+  return buildQueue(
+    words,
+    pair.categories.map((category) => ({
+      ...category,
+      isActiveForStudy: true,
+    })),
+    mode,
+    Infinity,
+    now,
+  );
 }
 export function advanceQueue(
   queue: string[],

@@ -1,6 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, Languages, Plus, X } from "lucide-react";
-import type { Category, PairData, Settings, WordCard } from "../types";
+import type {
+  Category,
+  PairData,
+  Settings,
+  StudySelection,
+  WordCard,
+} from "../types";
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
@@ -11,6 +17,7 @@ export function WordForm({
   t,
   existing,
   onClose,
+  onPractice,
 }: {
   pair: PairData;
   settings: Settings;
@@ -18,6 +25,7 @@ export function WordForm({
   t: T;
   existing?: WordCard;
   onClose?: () => void;
+  onPractice?: (selection: StudySelection) => void;
 }) {
   const id = useId();
   const [word, setWord] = useState(existing?.targetWord ?? "");
@@ -44,6 +52,7 @@ export function WordForm({
     null,
   );
   const [saved, setSaved] = useState(false);
+  const [savedWordId, setSavedWordId] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const sentenceController = useRef<AbortController | null>(null);
   const manual = useRef(!!existing);
@@ -184,6 +193,7 @@ export function WordForm({
       setAlternatives([]);
       setMessage(null);
       setSaved(true);
+      setSavedWordId(card.id);
       manual.current = false;
       revision.current++;
       controller.current?.abort();
@@ -235,7 +245,8 @@ export function WordForm({
           {t("targetWord")}
           <div className="input-action">
             <input
-              id={`${id}-word`} aria-label={t('targetWord')}
+              id={`${id}-word`}
+              aria-label={t("targetWord")}
               required
               autoComplete="off"
               maxLength={100}
@@ -349,7 +360,8 @@ export function WordForm({
             </button>
           </span>
           <textarea
-            id={`${id}-sentence-translation`} aria-label={t('contextTranslation')}
+            id={`${id}-sentence-translation`}
+            aria-label={t("contextTranslation")}
             maxLength={2000}
             rows={2}
             value={sentenceTranslation}
@@ -404,6 +416,16 @@ export function WordForm({
             <Check size={16} />
             {t("saved")}
           </p>
+        )}
+        {saved && savedWordId && onPractice && (
+          <button
+            type="button"
+            className="outline-button"
+            onClick={() => onPractice({ kind: "word", id: savedWordId })}
+          >
+            {t("practiceSavedWord")}
+            <ArrowRight size={17} />
+          </button>
         )}
       </form>
     </div>

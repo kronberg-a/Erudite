@@ -9,7 +9,13 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { Category, PairData, Settings, WordCard } from "../types";
+import type {
+  Category,
+  PairData,
+  Settings,
+  StudySelection,
+  WordCard,
+} from "../types";
 import { languages } from "../types";
 import type { T } from "../i18n/translations";
 import { resetCard } from "../core/srsEngine";
@@ -19,11 +25,13 @@ export function CategoryView({
   settings,
   update,
   t,
+  onPractice,
 }: {
   pair: PairData;
   settings: Settings;
   update: (p: PairData) => void;
   t: T;
+  onPractice: (selection: StudySelection) => void;
 }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("all");
@@ -158,6 +166,17 @@ export function CategoryView({
                   {mastered} {t("mastered")}
                 </span>
               </div>
+              <button
+                className="category-practice outline-button"
+                aria-label={`${t("practice")}: ${category.name[settings.interfaceLanguage]}`}
+                disabled={!words.some((word) => word.status !== "MASTERED")}
+                onClick={() =>
+                  onPractice({ kind: "category", id: category.id })
+                }
+              >
+                <BookOpen size={15} />
+                {t("practice")}
+              </button>
               <label className="checkbox-row">
                 <input
                   type="checkbox"
@@ -233,6 +252,15 @@ export function CategoryView({
               <div className="row-actions">
                 <button
                   className="icon-button"
+                  title={t("practice")}
+                  aria-label={`${t("practice")}: ${w.targetWord}`}
+                  disabled={w.status === "MASTERED"}
+                  onClick={() => onPractice({ kind: "word", id: w.id })}
+                >
+                  <BookOpen size={16} />
+                </button>
+                <button
+                  className="icon-button"
                   title={t("reset")}
                   aria-label={`${t("reset")}: ${w.targetWord}`}
                   onClick={() => modify(resetCard(w))}
@@ -279,6 +307,7 @@ export function CategoryView({
             settings={settings}
             update={update}
             t={t}
+            onPractice={onPractice}
             existing={editing}
             onClose={() => setEditing(null)}
           />

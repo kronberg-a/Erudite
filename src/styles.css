@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+.practice-note {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: -12px 0 24px;
+}
+.category-practice {
+  margin-top: 17px;
+  width: 100%;
+  min-height: 36px;
+  font-size: 11px;
+}
+
 .typing-attempts {
   color: var(--muted);
   font-size: 11px;
@@ -1230,7 +1243,7 @@ kbd {
 .word-table-header,
 .word-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px 80px;
+  grid-template-columns: minmax(0, 1fr) 130px 100px;
   align-items: center;
   gap: 15px;
   padding: 13px 22px;

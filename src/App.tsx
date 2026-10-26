@@ -10,7 +10,13 @@ import {
   ShieldCheck,
   Sun,
 } from "lucide-react";
-import type { AppData, Language, PairData, Settings } from "./types";
+import type {
+  AppData,
+  Language,
+  PairData,
+  Settings,
+  StudySelection,
+} from "./types";
 import { languageNames, languages } from "./types";
 import { translator } from "./i18n/translations";
 import { seedPair } from "./i18n/seedData";
@@ -26,6 +32,10 @@ export default function App() {
   const [storageError, setStorageError] = useState(initial.error);
   const [page, setPage] = useState<Page>("learn");
   const [generation, setGeneration] = useState(0);
+  const [practiceRequest, setPracticeRequest] = useState<{
+    pairKey: string;
+    selection: StudySelection;
+  } | null>(null);
   const s = data.settings;
   const t = translator(s.interfaceLanguage);
   const key = pairKey(s.sourceLanguage, s.targetLanguage);
@@ -58,6 +68,14 @@ export default function App() {
     });
   const update = (p: PairData) =>
     setData((d) => ({ ...d, pairs: { ...d.pairs, [key]: p } }));
+  const practice = (selection: StudySelection) => {
+    setPracticeRequest({ pairKey: key, selection });
+    setPage("learn");
+  };
+  const navigate = (next: Page) => {
+    if (next === "learn") setPracticeRequest(null);
+    setPage(next);
+  };
   const nav = [
     { id: "learn", icon: BookOpen },
     { id: "categories", icon: Layers },
@@ -72,7 +90,7 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            setPage("learn");
+            navigate("learn");
           }}
         >
           <span className="brand-mark">
@@ -90,7 +108,7 @@ export default function App() {
               key={id}
               className={`nav-item ${page === id ? "active" : ""}`}
               aria-current={page === id ? "page" : undefined}
-              onClick={() => setPage(id)}
+              onClick={() => navigate(id)}
             >
               <Icon size={19} />
               <span>{t(id)}</span>
@@ -174,6 +192,16 @@ export default function App() {
           )}
           {page === "learn" && (
             <StudyView
+              key={JSON.stringify(
+                practiceRequest?.pairKey === key
+                  ? practiceRequest.selection
+                  : null,
+              )}
+              initialSelection={
+                practiceRequest?.pairKey === key
+                  ? practiceRequest.selection
+                  : undefined
+              }
               pair={pair}
               settings={s}
               update={update}
@@ -183,10 +211,22 @@ export default function App() {
             />
           )}{" "}
           {page === "categories" && (
-            <CategoryView pair={pair} settings={s} update={update} t={t} />
+            <CategoryView
+              pair={pair}
+              settings={s}
+              update={update}
+              t={t}
+              onPractice={practice}
+            />
           )}{" "}
           {page === "add" && (
-            <WordForm pair={pair} settings={s} update={update} t={t} />
+            <WordForm
+              pair={pair}
+              settings={s}
+              update={update}
+              t={t}
+              onPractice={practice}
+            />
           )}{" "}
           {page === "settings" && (
             <SettingsView
@@ -194,6 +234,7 @@ export default function App() {
               changeSettings={changeSettings}
               restore={(d) => {
                 setData(d);
+                setPracticeRequest(null);
                 setGeneration((n) => n + 1);
               }}
               t={t}
@@ -215,7 +256,7 @@ export default function App() {
             key={id}
             className={page === id ? "active" : ""}
             aria-current={page === id ? "page" : undefined}
-            onClick={() => setPage(id)}
+            onClick={() => navigate(id)}
           >
             <Icon size={21} />
             <span>{t(id)}</span>

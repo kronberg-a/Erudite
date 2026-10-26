@@ -36,6 +36,8 @@ Start a mixed, new-only, or review-only session. Tap the card, press Space/Enter
 
 The scheduling engine follows the supplied ReWord specification: new known words become mastered or receive a seven-day review; learning words require three positive passes; review intervals multiply by ease, with mastery after 90 days; failure resets learning and reduces ease to a minimum of 1.3. Learning cards re-enter after three other cards, or at the end of a shorter queue. New-word caps are enforced across sessions per language pair and local calendar day. Undo restores that allowance.
 
+The New words summary shows the actual number of eligible new words, rather than the capped session count. When the regular daily allowance is exhausted, the study screen explains how to continue. Choose a folder in **Practice selection**, click **Practice** on a folder or word in Vocabulary, or choose **Practice saved word** immediately after adding a word. These explicit selections study only the chosen content and bypass the automatic daily cap and folder inclusion toggles. They do not change those preferences, and mastered words and future review dates still follow the normal SRS filters. Reset words immediately qualify as NEW in these sessions, including words already introduced today.
+
 ## Typing and active recall
 
 Choose **Recall mode** in the study header or Settings: **Swipe cards**, **Type every answer**, or **Mixed recall**. Mixed recall requires typing for learning cards; new and review cards retain standard swiping. The header also switches between direct keyboard input and shuffled letter tiles. Tapping an inserted tile returns it to the bank, including repeated letters and spaces.

@@ -16,11 +16,12 @@ import type {
   PairData,
   Settings,
   TypingInput,
+  StudySelection,
   WordCard,
 } from "../types";
 import type { T } from "../i18n/translations";
 import { reviewCard } from "../core/srsEngine";
-import { advanceQueue, buildQueue, localDay } from "../core/queueManager";
+import { advanceQueue, buildStudyQueue, localDay } from "../core/queueManager";
 import { speak } from "../core/speech";
 import { useSwipeGesture } from "../hooks/useSwipeGesture";
 import { useKeyboard } from "../hooks/useKeyboard";
@@ -33,6 +34,7 @@ interface Props {
   t: T;
   openLibrary: () => void;
   changeSettings: (patch: Partial<Settings>) => void;
+  initialSelection?: StudySelection;
 }
 interface Undo {
   cardId: string;
@@ -49,8 +51,12 @@ export function StudyView({
   t,
   openLibrary,
   changeSettings,
+  initialSelection,
 }: Props) {
   const [mode, setMode] = useState<Mode>("mixed");
+  const [selection, setSelection] = useState<StudySelection | undefined>(
+    initialSelection,
+  );
   const [queue, setQueue] = useState<string[]>([]);
   const [started, setStarted] = useState(false);
   const [initial, setInitial] = useState(0);
@@ -73,20 +79,19 @@ export function StudyView({
     0,
     settings.dailyNewCardsCap - (pair.introduced[today]?.length ?? 0),
   );
-  const available = buildQueue(
-    pair.words,
-    pair.categories,
-    mode,
-    dailyRemaining,
-  );
-  const due = buildQueue(pair.words, pair.categories, "review", 0).length;
-  const fresh = buildQueue(
-    pair.words,
-    pair.categories,
-    "new",
-    dailyRemaining,
+  const available = buildStudyQueue(pair, mode, dailyRemaining, selection);
+  const due = buildStudyQueue(pair, "review", 0, selection).length;
+  const fresh = buildStudyQueue(pair, "new", Infinity, selection).length;
+  const dailyLimited =
+    !selection && dailyRemaining === 0 && fresh > 0 && mode !== "review";
+  const mastered = pair.words.filter(
+    (w) =>
+      w.status === "MASTERED" &&
+      (!selection ||
+        (selection.kind === "word"
+          ? w.id === selection.id
+          : w.categoryIds.includes(selection.id))),
   ).length;
-  const mastered = pair.words.filter((w) => w.status === "MASTERED").length;
   const card = pair.words.find((w) => w.id === queue[0]);
   const typing = !!card && needsTyping(card, settings.studyMode);
   const resetTurn = () => {
@@ -213,6 +218,40 @@ export function StudyView({
         </div>
         <div className="study-selectors">
           <label className="recall-mode-label">
+            {t("practiceSelection")}
+            <select
+              aria-label={t("practiceSelection")}
+              value={selection ? `${selection.kind}:${selection.id}` : "all"}
+              disabled={started && queue.length > 0}
+              onChange={(event) => {
+                const value = event.target.value;
+                setSelection(
+                  value === "all"
+                    ? undefined
+                    : value.startsWith("category:")
+                      ? { kind: "category", id: value.slice(9) }
+                      : { kind: "word", id: value.slice(5) },
+                );
+                setStarted(false);
+                setQueue([]);
+                setHistory([]);
+                resetTurn();
+              }}
+            >
+              <option value="all">{t("allActiveFolders")}</option>
+              {pair.categories.map((category) => (
+                <option key={category.id} value={`category:${category.id}`}>
+                  {category.name[settings.interfaceLanguage]}
+                </option>
+              ))}
+              {selection?.kind === "word" && (
+                <option value={`word:${selection.id}`}>
+                  {t("selectedWord")}
+                </option>
+              )}
+            </select>
+          </label>
+          <label className="recall-mode-label">
             {t("studyMode")}
             <select
               aria-label={t("studyMode")}
@@ -260,6 +299,9 @@ export function StudyView({
           </div>
         </div>
       </div>
+      {selection && (
+        <p className="practice-note">{t("selectedPracticeHint")}</p>
+      )}
       <div className="summary-grid">
         <div>
           <span className="stat-dot blue" />
@@ -479,7 +521,9 @@ export function StudyView({
                 ? t("completeSub")
                 : available.length
                   ? `${available.length} ${t("remaining")}. ${t("studySub")}`
-                  : t("empty")}
+                  : dailyLimited
+                    ? t("dailyLimitReached")
+                    : t("empty")}
             </p>
             <button
               className="primary-button"
