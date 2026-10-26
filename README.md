@@ -4,6 +4,10 @@ A local-first vocabulary application built with React, TypeScript, Vite, Tailwin
 
 ## Run
 
+**Open directly:** download/clone the complete repository, then double-click `index.html`. The included `public/standalone/` JavaScript and CSS bundles let it run without Node.js or a local server. Keep these files alongside the HTML. You can also open `dist/index.html` after building. Translation still needs an internet connection; browser support for local-file storage and speech can vary.
+
+**Develop:**
+
 Requires Node.js 22.12+ and pnpm 11.
 
 ```sh
@@ -21,6 +25,8 @@ pnpm preview
 ```
 
 Deploy the generated `dist/` directory to any static host. Relative asset paths support subdirectory hosting, including GitHub Pages. The app uses no server-side routes.
+
+`pnpm build` refreshes the checked-in `public/standalone/` bundles and packages `dist/`. Commit regenerated bundles with source changes so direct opening stays current. Vite development serves the TypeScript entry instead, with hot reload. The production build uses a classic script bundle rather than browser ES modules, which cannot be loaded reliably from `file://` URLs.
 
 ## Learning
 
