@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import { languages } from "../types";
 import { seedPair } from "../i18n/seedData";
+import { hydrateDailyProgress } from "../core/dailyGoal";
 const KEY = "erudite:v2";
 export const defaultSettings: Settings = {
   interfaceLanguage: "en",
@@ -17,6 +18,7 @@ export const defaultSettings: Settings = {
   studyMode: "SWIPE_ONLY",
   strictAccents: true,
   theme: "light",
+  dailyWordGoal: null,
 };
 export const pairKey = (source: Language, target: Language) =>
   `${source}-${target}`;
@@ -48,6 +50,8 @@ function validStored(value: unknown, version: 1 | 2): boolean {
     (s.studyMode !== undefined &&
       !["SWIPE_ONLY", "TYPE_ONLY", "MIXED"].includes(s.studyMode)) ||
     (s.strictAccents !== undefined && typeof s.strictAccents !== "boolean") ||
+    (s.dailyWordGoal !== undefined && s.dailyWordGoal !== null &&
+      (!integer(s.dailyWordGoal) || s.dailyWordGoal < 1 || s.dailyWordGoal > 50)) ||
     !d.pairs ||
     typeof d.pairs !== "object" ||
     Array.isArray(d.pairs)
@@ -126,7 +130,13 @@ function validStored(value: unknown, version: 1 | 2): boolean {
   });
 }
 export function validateData(value: unknown): value is AppData {
-  return validStored(value, 2);
+  if (!validStored(value, 2)) return false;
+  try {
+    hydrateDailyProgress((value as AppData).dailyProgress);
+    return true;
+  } catch {
+    return false;
+  }
 }
 export function hydrateData(value: unknown): AppData {
   const legacy = validStored(value, 1);
@@ -151,6 +161,7 @@ export function hydrateData(value: unknown): AppData {
     studyMode: d.settings.studyMode ?? defaultSettings.studyMode,
     strictAccents: d.settings.strictAccents ?? true,
     theme: d.settings.theme,
+    dailyWordGoal: d.settings.dailyWordGoal ?? null,
   };
   const pairs: Record<string, PairData> = Object.fromEntries(
     Object.entries(d.pairs).map(([key, p]) => [
@@ -189,6 +200,7 @@ export function hydrateData(value: unknown): AppData {
     settings,
     pairs,
     reviewOrder: legacy ? studied.length : d.reviewOrder!,
+    dailyProgress: hydrateDailyProgress((value as AppData).dailyProgress),
   };
 }
 export function loadData(): { data: AppData; error: boolean } {

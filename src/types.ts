@@ -37,6 +37,12 @@ export interface Settings {
   studyMode: "SWIPE_ONLY" | "TYPE_ONLY" | "MIXED";
   strictAccents: boolean;
   theme: "light" | "dark";
+  dailyWordGoal: number | null;
+}
+export interface DailyProgress {
+  date: string;
+  wordIds: string[];
+  acknowledgedGoal: number | null;
 }
 export interface PairData {
   words: WordCard[];
@@ -45,6 +51,7 @@ export interface PairData {
 export interface AppData {
   version: 2;
   reviewOrder: number;
+  dailyProgress?: DailyProgress;
   settings: Settings;
   pairs: Record<string, PairData>;
 }

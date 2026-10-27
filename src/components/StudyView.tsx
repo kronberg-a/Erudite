@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type {
   Action,
+  DailyProgress,
   Evaluation,
   Mode,
   PairData,
@@ -32,10 +33,12 @@ import { useSwipeGesture } from "../hooks/useSwipeGesture";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { needsTyping } from "../core/typing";
 import { TypingCard } from "./TypingCard";
+import { localDate, recordRecall, todayProgress } from "../core/dailyGoal";
 interface Props {
   pair: PairData;
   settings: Settings;
-  update: (p: PairData, reviewOrder?: number) => void;
+  update: (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress) => void;
+  dailyProgress?: DailyProgress;
   reviewOrder: number;
   t: T;
   openLibrary: () => void;
@@ -50,6 +53,7 @@ interface Undo {
   reviewOrder: number;
   mode: Mode;
   completed: number;
+  dailyProgress: DailyProgress;
 }
 export function StudyView({
   pair,
@@ -60,7 +64,9 @@ export function StudyView({
   changeSettings,
   initialSelection,
   reviewOrder,
+  dailyProgress,
 }: Props) {
+  const [day, setDay] = useState(localDate);
   const [mode, setMode] = useState<Mode>("mixed");
   const [selection, setSelection] = useState<StudySelection | undefined>(
     initialSelection,
@@ -78,6 +84,7 @@ export function StudyView({
   const [inputMode, setInputMode] = useState<TypingInput>("KEYBOARD");
   const [turn, setTurn] = useState(0);
   const nextButton = useRef<HTMLButtonElement>(null);
+  const goalButton = useRef<HTMLButtonElement>(null);
   const evaluated = useRef(false);
   const committedTurn = useRef(-1);
   const available = buildStudyQueue(pair, mode, selection);
@@ -88,6 +95,25 @@ export function StudyView({
   const allMastered = pool.length > 0 && mastered === pool.length;
   const card = pair.words.find((w) => w.id === queue[0]);
   const typing = !!card && needsTyping(card, settings.studyMode);
+  const progress = todayProgress(dailyProgress);
+  const goal = settings.dailyWordGoal;
+  const goalReached = started && goal != null && progress.wordIds.length >= goal && progress.acknowledgedGoal !== goal;
+  useEffect(() => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timer = window.setTimeout(() => setDay(localDate()), midnight.getTime() - now.getTime());
+    const refresh = () => setDay(localDate());
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [day]);
+  useEffect(() => {
+    if (goalReached) goalButton.current?.focus({ preventScroll: true });
+  }, [goalReached]);
   const resetTurn = () => {
     setEvaluation(null);
     evaluated.current = false;
@@ -109,7 +135,7 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!card || committedTurn.current === turn || (typing && !revealed))
+    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
       return;
     committedTurn.current = turn;
     setLastAction(a);
@@ -128,13 +154,16 @@ export function StudyView({
         reviewOrder,
         mode,
         completed,
+        dailyProgress: progress,
       },
     ]);
     const nextPair = {
       ...pair,
       words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
     };
-    update(nextPair, reviewOrder + 1);
+    update(nextPair, reviewOrder + 1, a === "know"
+      ? recordRecall(progress, `${settings.sourceLanguage}-${settings.targetLanguage}`, card.id)
+      : progress);
     const continuation = continueQueue(
       queue,
       nextPair,
@@ -160,6 +189,7 @@ export function StudyView({
         ),
       },
       previous.reviewOrder,
+      todayProgress(previous.dailyProgress),
     );
     setQueue(previous.queue);
     setCompleted(previous.completed);
@@ -171,7 +201,7 @@ export function StudyView({
     setReverse(true);
   };
   const reveal = () => {
-    if (card && !typing) setRevealed(true);
+    if (card && !typing && !goalReached) setRevealed(true);
   };
   const next = () => {
     if (evaluation) action(evaluation === "CORRECT" ? "know" : "repeat");
@@ -187,7 +217,7 @@ export function StudyView({
     action,
     typing ? next : reveal,
     undo,
-    started && (!typing || revealed),
+    started && (goalReached || !typing || revealed),
   );
   const { drag, handlers } = useSwipeGesture(
     action,
@@ -335,6 +365,9 @@ export function StudyView({
         </div>
       </div>
       <section className="study-workspace">
+        {goal != null && (
+          <p className="daily-goal-progress">{t("dailyGoal")}: {progress.wordIds.length} / {goal}</p>
+        )}
         <div className="session-bar">
           <button
             className="text-button"
@@ -357,7 +390,26 @@ export function StudyView({
             }}
           />
         </div>
-        {started && card ? (
+        {goalReached ? (
+          <div className="session-empty daily-goal-card" role="region" aria-labelledby="daily-goal-title">
+            <div className="empty-icon goal-check" aria-hidden="true"><Check size={28} /></div>
+            <p className="eyebrow">{t("dailyGoal")}</p>
+            <h2 id="daily-goal-title">{t("goalReached")}</h2>
+            <p>{t("goalCongratulations")}</p>
+            <strong className="goal-total">{progress.wordIds.length} / {goal}</strong>
+            <div className="goal-actions">
+              <button ref={goalButton} className="primary-button" onClick={() => update(pair, reviewOrder, { ...progress, acknowledgedGoal: goal })}>
+                {t("continueStudy")}<ArrowRight size={17} />
+              </button>
+              <button className="outline-button" onClick={() => {
+                update(pair, reviewOrder, { ...progress, acknowledgedGoal: goal });
+                setStarted(false);
+                setQueue([]);
+                setHistory([]);
+              }}>{t("end")}</button>
+            </div>
+          </div>
+        ) : started && card ? (
           <>
             <div className="card-stack">
               <div className="stack-under" />
@@ -544,10 +596,10 @@ export function StudyView({
             </button>
           </div>
         )}
-        {started && card && typing && !revealed && (
+        {started && !goalReached && card && typing && !revealed && (
           <p className="typing-keyboard-hints">{t("typingShortcuts")}</p>
         )}
-        {started && card && (!typing || revealed) && (
+        {started && !goalReached && card && (!typing || revealed) && (
           <div className="keyboard-hints">
             <span>
               <kbd>←</kbd> {t("repeat")}
@@ -567,7 +619,7 @@ export function StudyView({
             </span>
           </div>
         )}
-        {started && card && (
+        {started && !goalReached && card && (
           <button
             className="end-session"
             onClick={() => {

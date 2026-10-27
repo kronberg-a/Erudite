@@ -39,6 +39,22 @@ function legacyBackup() {
   };
 }
 describe("continuous data and migration", () => {
+  it("defaults older backups to unlimited and validates the goal range", () => {
+    const oldSettings = { ...defaultSettings };
+    delete (oldSettings as Partial<typeof oldSettings>).dailyWordGoal;
+    expect(hydrateData({ ...data, settings: oldSettings }).settings.dailyWordGoal).toBeNull();
+    for (const dailyWordGoal of [0, -1, 51, 1.5, "10"]) {
+      expect(() => hydrateData({ ...data, settings: { ...defaultSettings, dailyWordGoal } })).toThrow();
+    }
+    for (const dailyWordGoal of [null, 1, 50]) {
+      expect(hydrateData({ ...data, settings: { ...defaultSettings, dailyWordGoal } }).settings.dailyWordGoal).toBe(dailyWordGoal);
+    }
+  });
+  it("round trips daily progress and rejects malformed progress", () => {
+    const dailyProgress = { date: "2026-10-27", wordIds: ['["en-de","word"]'], acknowledgedGoal: 1 };
+    expect(hydrateData({ ...data, dailyProgress }).dailyProgress).toEqual(dailyProgress);
+    expect(() => hydrateData({ ...data, dailyProgress: { ...dailyProgress, wordIds: [3] } })).toThrow();
+  });
   it("accepts current data and rejects malformed counters, versions and cards", () => {
     expect(validateData(data)).toBe(true);
     expect(validateData(null)).toBe(false);

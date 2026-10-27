@@ -1,6 +1,19 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  dailyGoal: ["Daily word goal", "Цель слов на день", "Tägliches Wortziel", "Objectif quotidien de mots", "Obiettivo giornaliero di parole", "Objetivo diario de palabras"],
+  unlimited: ["Unlimited", "Без ограничений", "Unbegrenzt", "Illimité", "Illimitato", "Sin límite"],
+  dailyGoalHint: [
+    "Choose 1–50 words per day, or unlimited. Each distinct word marked I know counts once per local day, across all language pairs. You can always continue.",
+    "Выберите 1–50 слов в день или учитесь без ограничений. Каждое уникальное слово с оценкой «Знаю» учитывается один раз за местный день во всех языковых парах. Всегда можно продолжить.",
+    "Wähle 1–50 Wörter pro Tag oder unbegrenzt. Jedes mit „Gewusst“ bewertete Wort zählt einmal pro lokalem Tag, über alle Sprachpaare hinweg. Du kannst jederzeit weiterlernen.",
+    "Choisissez 1 à 50 mots par jour, ou sans limite. Chaque mot distinct marqué « Je sais » compte une fois par jour local, toutes paires de langues confondues. Vous pouvez toujours continuer.",
+    "Scegli da 1 a 50 parole al giorno, oppure senza limiti. Ogni parola distinta segnata «Lo so» conta una volta al giorno locale, per tutte le coppie di lingue. Puoi sempre continuare.",
+    "Elige de 1 a 50 palabras al día, o sin límite. Cada palabra distinta marcada «Lo sé» cuenta una vez por día local, en todos los pares de idiomas. Siempre puedes continuar.",
+  ],
+  goalReached: ["Daily goal reached", "Цель дня достигнута", "Tagesziel erreicht", "Objectif du jour atteint", "Obiettivo del giorno raggiunto", "Objetivo diario alcanzado"],
+  goalCongratulations: ["Well done! You reached your word goal for today. Keep going or finish here — the choice is yours.", "Отличная работа! Вы достигли цели на сегодня. Продолжить или закончить — решать вам.", "Gut gemacht! Du hast dein Wortziel für heute erreicht. Lerne weiter oder höre hier auf — du entscheidest.", "Bravo ! Vous avez atteint votre objectif de mots pour aujourd’hui. Continuez ou terminez ici, à vous de choisir.", "Ottimo lavoro! Hai raggiunto il tuo obiettivo di parole per oggi. Continua o fermati qui: scegli tu.", "¡Bien hecho! Has alcanzado tu objetivo de palabras de hoy. Sigue o termina aquí: tú decides."],
+  continueStudy: ["Continue learning", "Продолжить обучение", "Weiterlernen", "Continuer à apprendre", "Continua a imparare", "Seguir aprendiendo"],
   learn: ["Learn", "Учить", "Lernen", "Apprendre", "Impara", "Aprender"],
   categories: [
     "Vocabulary",

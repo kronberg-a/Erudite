@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type {
   AppData,
+  DailyProgress,
   Language,
   PairData,
   Settings,
@@ -66,10 +67,11 @@ export default function App() {
         },
       };
     });
-  const update = (p: PairData, reviewOrder?: number) =>
+  const update = (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress) =>
     setData((d) => ({
       ...d,
       reviewOrder: reviewOrder ?? d.reviewOrder,
+      dailyProgress: dailyProgress ?? d.dailyProgress,
       pairs: { ...d.pairs, [key]: p },
     }));
   const practice = (selection: StudySelection) => {
@@ -209,6 +211,7 @@ export default function App() {
               pair={pair}
               settings={s}
               reviewOrder={data.reviewOrder}
+              dailyProgress={data.dailyProgress}
               update={update}
               t={t}
               openLibrary={() => setPage("categories")}

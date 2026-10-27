@@ -47,6 +47,10 @@ export function SettingsView({
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState(false);
   const s = data.settings;
+  const [goalInput, setGoalInput] = useState(s.dailyWordGoal?.toString() ?? "");
+  const validGoal = (value: string) =>
+    value.trim() !== "" && Number.isInteger(Number(value)) &&
+    Number(value) >= 1 && Number(value) <= 50;
   const download = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
@@ -122,6 +126,46 @@ export function SettingsView({
             </select>
           </label>
           <p className="form-message">{t("mixedRecallHint")}</p>
+          <label>
+            {t("dailyGoal")}
+            <input
+              id="daily-word-goal"
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              inputMode="numeric"
+              enterKeyHint="done"
+              placeholder="1–50"
+              value={goalInput}
+              aria-describedby="daily-goal-hint"
+              onChange={(e) => {
+                const value = e.target.value;
+                setGoalInput(value);
+                if (validGoal(value)) changeSettings({ dailyWordGoal: Number(value) });
+              }}
+              onBlur={(e) => setGoalInput(validGoal(e.currentTarget.value)
+                ? e.currentTarget.value : s.dailyWordGoal?.toString() ?? "")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+          </label>
+          <div className="setting-toggle">
+            <label htmlFor="unlimited-goal">{t("unlimited")}</label>
+            <input
+              id="unlimited-goal"
+              type="checkbox"
+              role="switch"
+              checked={s.dailyWordGoal === null}
+              onChange={(e) => {
+                const dailyWordGoal = e.target.checked ? null : validGoal(goalInput) ? Number(goalInput) : 10;
+                setGoalInput(dailyWordGoal?.toString() ?? "");
+                changeSettings({ dailyWordGoal });
+              }}
+            />
+          </div>
+          <p id="daily-goal-hint" className="form-message">{t("dailyGoalHint")}</p>
           <div className="setting-toggle">
             <div>
               <label htmlFor="instant-master">{t("instant")}</label>
