@@ -1993,29 +1993,3 @@ kbd {
     scroll-behavior: auto !important;
   }
 }
-
-/* Module workspaces stay mounted so switching preserves live sessions. */
-[hidden] { display: none !important; }
-.app-mode-switch { display: flex; padding: 3px; gap: 3px; border: 1px solid var(--border); border-radius: 5px; background: var(--soft); margin: 22px 0 0; }
-.app-mode-switch button { display: flex; flex: 1; justify-content: center; align-items: center; gap: 8px; min-height: 36px; border: 1px solid transparent; border-radius: 3px; color: var(--muted); font-size: 12px; }
-.app-mode-switch button[aria-pressed="true"] { color: var(--text); background: var(--surface); border-color: var(--border); }
-.mobile-mode-brand { display: none; }
-.nav-item:disabled { opacity: 0.45; cursor: default; }
-.chess-workspace { height: calc(100dvh - 80px); min-height: 0; }
-.chess-workspace iframe { display: block; width: 100%; height: 100%; border: 0; }
-.chess-workspace > [role="status"] { position: absolute; padding: 20px; }
-.mode-chess .main-shell { height: 100dvh; min-height: 0; }
-@media (max-width: 767px) {
-  .mobile-mode-brand { display: flex; flex-direction: column; gap: 4px; }
-  .mobile-mode-brand .mobile-brand { display: block; }
-  .mobile-mode-brand .app-mode-switch { margin: 0; }
-  .mobile-mode-brand .app-mode-switch button { min-height: 30px; padding: 3px 9px; gap: 5px; font-size: 11px; }
-  .topbar { height: 100px; flex-shrink: 0; }
-  .chess-workspace { height: calc(100dvh - 100px); }
-  .mode-chess .main-shell { padding-bottom: 0; }
-}
-
-@media (max-width: 767px) {
-  .mode-chess .chess-workspace { height: calc(100dvh - 170px - env(safe-area-inset-bottom)); }
-  .chess-bottom-nav { grid-template-columns: repeat(3, 1fr); }
-}
