@@ -1,8 +1,14 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { articleHandler } from "./server/article";
 export default defineConfig(({ command }) => ({
   plugins: [
     react(),
+    {
+      name: "erudite-article-api",
+      configureServer(server) { server.middlewares.use("/api/article", articleHandler); },
+      configurePreviewServer(server) { server.middlewares.use("/api/article", articleHandler); },
+    },
     {
       name: "erudite-development-entry",
       apply: "serve",

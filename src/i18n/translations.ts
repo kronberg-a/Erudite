@@ -1,6 +1,25 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  newCollection: ["Start another batch", "Начать новую подборку", "Neue Sammlung beginnen", "Commencer un nouveau lot", "Inizia un nuovo gruppo", "Empezar otro lote"],
+  reader: ["Reader", "Чтение", "Lesen", "Lecture", "Lettura", "Lectura"],
+  readerTitle: ["Read. Collect. Learn.", "Читайте. Собирайте. Учите.", "Lesen. Sammeln. Lernen.", "Lisez. Collectez. Apprenez.", "Leggi. Raccogli. Impara.", "Lee. Recoge. Aprende."],
+  readerSub: ["Import an article in your learning language. Select words or highlight phrases to build a practice folder.", "Импортируйте статью на изучаемом языке. Выбирайте слова и выделяйте фразы для учебной папки.", "Importiere einen Artikel in deiner Lernsprache. Wähle Wörter oder markiere Ausdrücke für einen Übungsordner.", "Importez un article dans la langue étudiée. Sélectionnez des mots ou expressions pour créer un dossier.", "Importa un articolo nella lingua che studi. Seleziona parole o frasi per creare una cartella di esercizio.", "Importa un artículo en el idioma que estudias. Selecciona palabras o frases para crear una carpeta."],
+  articleUrl: ["Article URL", "Ссылка на статью", "Artikel-URL", "Adresse de l’article", "URL dell’articolo", "URL del artículo"],
+  importArticle: ["Import article", "Импортировать статью", "Artikel importieren", "Importer l’article", "Importa articolo", "Importar artículo"],
+  importingArticle: ["Importing…", "Импорт…", "Importieren…", "Importation…", "Importazione…", "Importando…"],
+  articleError: ["Unable to import this article. The site may block downloads. Use the paste box below.", "Не удалось импортировать статью. Сайт может блокировать загрузку. Вставьте текст ниже.", "Artikel konnte nicht importiert werden. Die Website blockiert möglicherweise Downloads. Füge den Text unten ein.", "Impossible d’importer l’article. Le site bloque peut-être le téléchargement. Collez le texte ci-dessous.", "Impossibile importare l’articolo. Il sito potrebbe bloccare il download. Incolla il testo qui sotto.", "No se pudo importar el artículo. El sitio puede bloquear descargas. Pega el texto abajo."],
+  pasteArticle: ["Paste article text", "Вставить текст статьи", "Artikeltext einfügen", "Coller le texte", "Incolla il testo", "Pegar texto del artículo"],
+  articleTitle: ["Article title", "Заголовок статьи", "Artikeltitel", "Titre de l’article", "Titolo dell’articolo", "Título del artículo"],
+  articleText: ["Article text", "Текст статьи", "Artikeltext", "Texte de l’article", "Testo dell’articolo", "Texto del artículo"],
+  readText: ["Read text", "Читать текст", "Text lesen", "Lire le texte", "Leggi il testo", "Leer texto"],
+  untitledArticle: ["Untitled article", "Статья без названия", "Artikel ohne Titel", "Article sans titre", "Articolo senza titolo", "Artículo sin título"],
+  collectedWords: ["Collected words", "Выбранные слова", "Gesammelte Wörter", "Mots collectés", "Parole raccolte", "Palabras recogidas"],
+  selectWords: ["Click a word or highlight a phrase in the article. Up to 50 per batch.", "Нажмите на слово или выделите фразу в статье. До 50 за один раз.", "Klicke ein Wort an oder markiere einen Ausdruck. Bis zu 50 pro Sammlung.", "Cliquez sur un mot ou surlignez une expression. Jusqu’à 50 par lot.", "Fai clic su una parola o evidenzia una frase. Fino a 50 per gruppo.", "Pulsa una palabra o resalta una frase. Hasta 50 por grupo."],
+  collectionLimit: ["Batch full (50). Save these words before starting another batch.", "Выбрано 50 слов. Сохраните их перед новой подборкой.", "Sammlung voll (50). Speichere diese Wörter vor der nächsten Sammlung.", "Lot complet (50). Enregistrez ces mots avant un nouveau lot.", "Gruppo completo (50). Salva queste parole prima di un nuovo gruppo.", "Lote completo (50). Guarda estas palabras antes de otro lote."],
+  saveCollected: ["Save collected words", "Сохранить выбранные слова", "Gesammelte Wörter speichern", "Enregistrer les mots", "Salva le parole raccolte", "Guardar palabras recogidas"],
+  practiceFolder: ["Practice folder", "Практиковать папку", "Ordner üben", "Pratiquer ce dossier", "Esercita la cartella", "Practicar carpeta"],
+  remove: ["Remove", "Убрать", "Entfernen", "Retirer", "Rimuovi", "Quitar"],
   dailyGoal: ["Daily word goal", "Цель слов на день", "Tägliches Wortziel", "Objectif quotidien de mots", "Obiettivo giornaliero di parole", "Objetivo diario de palabras"],
   unlimited: ["Unlimited", "Без ограничений", "Unbegrenzt", "Illimité", "Illimitato", "Sin límite"],
   dailyGoalHint: [

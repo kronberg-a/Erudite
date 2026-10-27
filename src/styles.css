@@ -1894,7 +1894,7 @@ kbd {
     position: fixed;
     inset: auto 0 0;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 10px 8px max(10px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: var(--surface);
@@ -2033,3 +2033,26 @@ kbd {
     scroll-behavior: auto !important;
   }
 }
+
+.reader-import { padding: 24px; margin-bottom: 24px; }
+.reader-view form, .reader-view label { display: flex; flex-direction: column; gap: 10px; }
+.reader-view form { gap: 16px; }
+.reader-view label { font-size: 12px; }
+.reader-view input, .reader-view textarea { width: 100%; min-width: 0; font-size: 16px; }
+.reader-import summary { cursor: pointer; margin: 18px 0; font-size: 13px; }
+.reader-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); gap: 24px; align-items: start; }
+.reader-body, .reader-collector { padding: 28px; min-width: 0; overflow-wrap: anywhere; }
+.reader-body { user-select: text; }
+.reader-body h2 { font-size: 24px; line-height: 1.4; margin-bottom: 24px; }
+.reader-body p { line-height: 2; margin: 0 0 20px; }
+.reader-word { display: inline; font: inherit; color: inherit; padding: 0; border: 0; border-radius: 2px; background: transparent; cursor: pointer; user-select: text; transition: background-color 150ms ease-out; }
+.reader-word:hover, .reader-word[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.reader-word:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reader-collector { display: flex; flex-direction: column; gap: 18px; }
+.reader-collector h2 { font-size: 16px; }
+.reader-collector h2 span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.reader-entry { border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.reader-entry-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.reader-entry p, .reader-entry small { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 8px; }
+@media (max-width: 1000px) { .reader-columns { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .reader-import, .reader-body, .reader-collector { padding: 20px; } .bottom-nav button { min-width: 0; font-size: 9px; } }

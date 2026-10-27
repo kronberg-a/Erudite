@@ -24,7 +24,7 @@ pnpm build
 pnpm preview
 ```
 
-Deploy the generated `dist/` directory to any static host. Relative asset paths support subdirectory hosting, including GitHub Pages. The app uses no server-side routes.
+Deploy the generated `dist/` directory to any static host. Relative asset paths support subdirectory hosting, including GitHub Pages. Article URL importing requires the `/api/article` backend described below; pasted articles work on static hosts and when opened directly.
 
 `pnpm build` refreshes the checked-in `public/standalone/` bundles and packages `dist/`. Commit regenerated bundles with source changes so direct opening stays current. Vite development serves the TypeScript entry instead, with hot reload. The production build uses a classic script bundle rather than browser ES modules, which cannot be loaded reliably from `file://` URLs.
 
@@ -53,6 +53,14 @@ Final evaluation always pauses on the full revealed card and plays pronunciation
 Enable folders for study, search target words and translations, create folders, edit words, reset progress, or mark individual words mastered. Add Word accepts a word in the learning language and translates into the base language after 500ms. Manual translations are editable; alternative results can be added. Optional sentences have a separate translation action. Requests are cancelled or ignored when stale so late responses cannot overwrite manual edits.
 
 MyMemory is a third-party public service with availability and quota limits. Only word/sentence text explicitly entered for translation and the language pair are sent to it. The curated starter dictionary provides an offline fallback for recognized words; otherwise enter translations manually. Pronunciation uses browser speech synthesis and depends on installed voices and browser support.
+
+## Article reader
+
+Open Reader to import a public HTTP(S) article or expand **Paste article text** to enter its title and text manually. Click words or highlight phrases to collect up to 50 entries per batch. Translations use the active learning-to-base language pair, with at most two requests at once. Edit translations directly or retry failed requests. Context comes from the selected occurrence's sentence. Save the batch into a new folder, then choose **Practice folder** or **Start another batch**. Existing words gain folder membership while retaining their translations and learning progress.
+
+`server/article.ts` exposes `articleHandler` at `GET /api/article?url=...` through Vite dev and preview middleware. It validates all DNS results, pins the connection to a validated public address, revalidates every redirect, and enforces a 2 MB HTML limit and 15-second network deadline. Scripts and remote subresources are not executed by the extractor. Private addresses, unsupported content, blocked sites, and failed imports offer the paste fallback. It does not bypass paywalls or bot protection.
+
+For deployed URL import, mount this handler in a Node HTTP backend at `/api/article` and route that path to it. Static hosts and direct `file://` opening cannot run the extractor; use pasted text there. Public deployments should apply request rate limits at their gateway. Article URLs are fetched by the backend; selected word/phrase text is sent to MyMemory for translation. The full article remains transient in the reader; collected words and their context sentences persist through the existing local storage flow.
 
 ## Persistence
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
+  BookOpenText,
   ChevronDown,
   Layers,
   Moon,
@@ -26,7 +27,8 @@ import { StudyView } from "./components/StudyView";
 import { CategoryView } from "./components/CategoryView";
 import { WordForm } from "./components/WordForm";
 import { SettingsView } from "./components/SettingsView";
-type Page = "learn" | "categories" | "add" | "settings";
+import { ReaderView } from "./components/ReaderView";
+type Page = "learn" | "categories" | "reader" | "add" | "settings";
 const initial = loadData();
 export default function App() {
   const [data, setData] = useState<AppData>(initial.data);
@@ -85,6 +87,7 @@ export default function App() {
   const nav = [
     { id: "learn", icon: BookOpen },
     { id: "categories", icon: Layers },
+    { id: "reader", icon: BookOpenText },
     { id: "add", icon: Plus },
     { id: "settings", icon: Settings2 },
   ] as const;
@@ -248,6 +251,7 @@ export default function App() {
               t={t}
             />
           )}
+          {page === "reader" && <ReaderView pair={pair} settings={s} update={update} onPractice={practice} t={t} />}
         </main>
         <footer className="desktop-footer">
           <span>ERUDITE</span>

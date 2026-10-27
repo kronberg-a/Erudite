@@ -15,12 +15,15 @@
     "check:constraints": "node scripts/check-constraints.mjs"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "ipaddr.js": "^2.5.0",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/jsdom": "21.1.7",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
