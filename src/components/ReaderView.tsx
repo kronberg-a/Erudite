@@ -3,11 +3,11 @@ import { ArrowRight, BookOpenText, Languages, ListChecks, Plus, X } from "lucide
 import type { PairData, Settings, StudySelection } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
-import { collectArticleWords, importArticle, sentenceAt, wordKey, wordParts } from "../services/article";
+import { canonicalizeWord, collectArticleWords, importArticle, selectContextualTranslation, sentenceAt, sentenceContextAt, wordKey, wordParts } from "../services/article";
 import type { Article, CollectedWord } from "../services/article";
 
 interface PickedWord { word: string; offset: number }
-interface Entry extends CollectedWord { key: string; offset: number; group?: boolean; picked?: PickedWord[]; state: "pending" | "ready" | "error" }
+interface Entry extends CollectedWord { key: string; offset: number; sentenceOffset?: number; sourceWord?: string; group?: boolean; picked?: PickedWord[]; state: "pending" | "ready" | "error" }
 export function ReaderView({ pair, settings, update, onPractice, t }: {
   pair: PairData; settings: Settings; update: (pair: PairData) => void;
   onPractice: (selection: StudySelection) => void; t: T;
@@ -66,18 +66,91 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     const controller = new AbortController();
     previewRequest.current = controller;
     setPreview({ ...entry, state: "pending" });
-    void translate(entry.word, settings.targetLanguage, settings.sourceLanguage, controller.signal)
-      .then(async (result) => {
-        // Context is translated separately: this provider has no contextual word alignment.
-        let translatedSentence = entry.translatedSentence;
-        if (entry.group && entry.sentence && !controller.signal.aborted) {
-          if (entry.sentence === entry.word) translatedSentence = result.primary;
-          else {
-            try { translatedSentence = (await translate(entry.sentence, settings.targetLanguage, settings.sourceLanguage, controller.signal)).primary; }
-            catch { /* A context failure must not discard the selected translation. */ }
+    const canCanonicalize =
+      !!entry.sentence &&
+      (!("mock" in translate) || (typeof fetch === "function" && "mock" in fetch));
+    const canonicalPromise = canCanonicalize
+      ? canonicalizeWord(
+          entry.sourceWord ?? entry.word,
+          entry.sentence,
+          settings.targetLanguage,
+          entry.sentenceOffset,
+          controller.signal,
+        )
+      : Promise.resolve(entry.word);
+    void Promise.all([
+      translate(entry.word, settings.targetLanguage, settings.sourceLanguage, controller.signal),
+      canonicalPromise,
+    ])
+      .then(async ([result, canonical]) => {
+        if (controller.signal.aborted) return;
+        const nextWord = canonical.trim() || entry.word;
+        const nextKey = wordKey(nextWord, settings.targetLanguage);
+        let translation = result.primary;
+        let alternatives = result.alternatives ?? [];
+        if (nextKey !== entry.key) {
+          const existing = currentEntries.current.find((item) => item.key === nextKey);
+          if (existing) {
+            translation = existing.translation;
+            alternatives = [];
+          } else {
+            try {
+              const canonicalResult = await translate(
+                nextWord,
+                settings.targetLanguage,
+                settings.sourceLanguage,
+                controller.signal,
+              );
+              translation = canonicalResult.primary;
+              alternatives = [
+                ...(canonicalResult.alternatives ?? []),
+                ...alternatives,
+              ];
+            } catch {
+              /* Keep initial translation if re-translating the canonical form fails. */
+            }
           }
         }
-        if (!controller.signal.aborted) setPreview({ ...entry, translation: result.primary, translatedSentence, state: "ready" });
+        let translatedSentence = entry.translatedSentence;
+        const shouldScanSentenceContext =
+          !!entry.sentence &&
+          !controller.signal.aborted &&
+          (entry.group || alternatives.length > 0);
+        if (shouldScanSentenceContext) {
+          if (entry.sentence === entry.word || entry.sentence === nextWord) {
+            translatedSentence = translation;
+          } else {
+            try {
+              translatedSentence = (
+                await translate(
+                  entry.sentence,
+                  settings.targetLanguage,
+                  settings.sourceLanguage,
+                  controller.signal,
+                )
+              ).primary;
+              translation = selectContextualTranslation(
+                translation,
+                alternatives,
+                translatedSentence,
+                settings.sourceLanguage,
+              );
+            } catch {
+              /* A context failure must not discard the selected translation. */
+            }
+          }
+        }
+        if (!controller.signal.aborted) {
+          setPreview({
+            ...entry,
+            key: nextKey,
+            word: nextWord,
+            sourceWord: entry.sourceWord ?? entry.word,
+            translation,
+            translatedSentence,
+            state: "ready",
+          });
+        }
       }).catch(() => {
         if (!controller.signal.aborted) setPreview({ ...entry, state: "error" });
       });
@@ -104,7 +177,9 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     if (!article || !word || word.length > 2000 || !/\p{L}/u.test(word)) return;
     const key = wordKey(word, settings.targetLanguage);
     const existing = currentEntries.current.find((entry) => entry.key === key);
-    const next: Entry = { key, word, offset, group, picked, translation: "", sentence: sentence ?? sentenceAt(article.text, offset), state: "pending" };
+    const baseCtx = sentenceContextAt(article.text, offset);
+    const ctx = sentence !== undefined ? { sentence, wordOffset: baseCtx.wordOffset } : baseCtx;
+    const next: Entry = { key, word, sourceWord: word, offset, sentenceOffset: ctx.wordOffset, group, picked, translation: "", sentence: ctx.sentence, state: "pending" };
     if (existing) { closePreview(); setPreview({ ...next, translation: existing.translation, translatedSentence: existing.sentence === next.sentence ? existing.translatedSentence : undefined, state: "ready" }); }
     else translatePreview(next);
   };
@@ -176,7 +251,7 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     const result = collectArticleWords(pair, entries, folder, settings.targetLanguage);
     update(result.pair); setSavedFolder(result.folderId);
   };
-  const initialWords = (entry: Entry) => entry.picked ?? wordParts(entry.word).flatMap((part, index, parts) => index % 2 === 1 ? [{ word: part, offset: entry.offset + parts.slice(0, index).join("").length }] : []);
+  const initialWords = (entry: Entry) => entry.picked ?? wordParts(entry.sourceWord ?? entry.word).flatMap((part, index, parts) => index % 2 === 1 ? [{ word: part, offset: entry.offset + parts.slice(0, index).join("").length }] : []);
   let offset = 0;
   const paragraphs = article?.text.split("\n").map((text) => {
     const start = offset; offset += text.length + 1;
@@ -208,7 +283,7 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
           let position = start;
           return <p key={start} data-offset={start}>{wordParts(text).map((part, i) => {
             const at = position; position += part.length;
-            return i % 2 === 1 ? <button type="button" key={i} className="reader-word" data-offset={at} data-picked={picking && picked.some((word) => word.offset === at)} aria-pressed={picking ? picked.some((word) => word.offset === at) : entries.some((row) => row.key === wordKey(part, settings.targetLanguage))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
+            return i % 2 === 1 ? <button type="button" key={i} className="reader-word" data-offset={at} data-picked={picking && picked.some((word) => word.offset === at)} aria-pressed={picking ? picked.some((word) => word.offset === at) : entries.some((row) => row.key === wordKey(part, settings.targetLanguage) || (!row.group && row.offset === at))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
               event.preventDefault();
               // Touch browsers may emit dblclick after the second click already started selection.
               if (!picking) startPicking([{ word: part, offset: at }]);

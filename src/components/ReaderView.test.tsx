@@ -260,3 +260,61 @@ it("cancels a queued word tap when closing an existing popup", async () => {
   expect(translate).toHaveBeenCalledTimes(1);
   expect(container.querySelectorAll(".reader-entry")).toHaveLength(0);
 });
+it("converts selected verbs to infinitives, plural nouns to singular with articles, and adjectives to base forms via LINDAT UDPipe", async () => {
+  const conllu = [
+    "1\tDie\tder\tDET\tART\tCase=Nom|Definite=Def|Number=Plur\t3\tdet\t_\tTokenRange=0:3",
+    "2\talten\talt\tADJ\tADJA\tCase=Nom|Degree=Pos|Number=Plur\t3\tamod\t_\tTokenRange=4:9",
+    "3\tBücher\tBuch\tNOUN\tNN\tGender=Neut|Number=Plur\t4\tnsubj\t_\tTokenRange=10:16",
+    "4\tlagen\tliegen\tVERB\tVVFIN\tMood=Ind|Number=Plur|Tense=Past\t0\troot\t_\tTokenRange=17:22",
+  ].join("\n");
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ result: conllu }) }));
+  vi.mocked(translate).mockImplementation(async (word) => ({
+    primary: word === "das Buch" ? "the book" : word === "liegen" ? "to lie" : word === "alt" ? "old" : "raw",
+    alternatives: [],
+  }));
+  paste("Die alten Bücher lagen.");
+  await act(async () => click("alten"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("alt");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("old");
+  click("Add to list");
+  await act(async () => click("Bücher"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("das Buch");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("the book");
+  click("Add to list");
+  await act(async () => click("lagen"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("liegen");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("to lie");
+  click("Add to list");
+  click("Save collected words");
+  const saved: PairData = update.mock.calls[0][0];
+  expect(saved.words.map((w) => ({ targetWord: w.targetWord, translations: w.translations }))).toEqual([
+    { targetWord: "alt", translations: ["old"] },
+    { targetWord: "das Buch", translations: ["the book"] },
+    { targetWord: "liegen", translations: ["to lie"] },
+  ]);
+});
+it("automatically scans the surrounding sentence to disambiguate word and word-group translations", async () => {
+  vi.mocked(translate).mockImplementation(async (text) => {
+    if (text === "Bank") return { primary: "bank", alternatives: ["bench", "seat"] };
+    if (text === "Er saß auf der Bank im Park.") return { primary: "He sat on the bench in the park.", alternatives: [] };
+    if (text === "nahm an") return { primary: "assumed", alternatives: ["accepted", "adopted"] };
+    if (text === "Sie nahm das Geschenk dankend an.") return { primary: "She gratefully accepted the gift.", alternatives: [] };
+    return { primary: text, alternatives: [] };
+  });
+  paste("Er saß auf der Bank im Park. Sie nahm das Geschenk dankend an.");
+  await act(async () => click("Bank"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("Bank");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("bench");
+  click("Add to list");
+  click("Select words"); click("nahm"); click("an");
+  await act(async () => action("Translate selection"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("nahm an");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("accepted");
+  click("Add to list");
+  click("Save collected words");
+  const saved: PairData = update.mock.calls[0][0];
+  expect(saved.words.map((w) => ({ targetWord: w.targetWord, translations: w.translations }))).toEqual([
+    { targetWord: "Bank", translations: ["bench"] },
+    { targetWord: "nahm an", translations: ["accepted"] },
+  ]);
+});
