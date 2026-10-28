@@ -38,6 +38,13 @@ describe("active recall validation", () => {
     expect(evaluateAnswer("café", "café", true, true)).toBe("ASSISTED");
     expect(evaluateAnswer("caf", "café", true, true)).toBe("INCORRECT");
   });
+  it("treats corrected typos as assisted, including when no hint was used", () => {
+    for (const attempts of [1, 2]) {
+      expect(evaluateAnswer("CAFÉ", "café", true, false, attempts)).toBe("ASSISTED");
+      expect(evaluateAnswer("wrong", "café", true, false, attempts)).toBe("INCORRECT");
+    }
+    expect(evaluateAnswer("CAFÉ", "café", true, false, 0)).toBe("CORRECT");
+  });
   it("adds one correct character after the valid prefix and replaces an incorrect suffix", () => {
     expect(nextHint("", "laufen (verb)", true)).toBe("l");
     expect(nextHint("lauXXX", "laufen", true)).toBe("lauf");
@@ -72,7 +79,8 @@ describe("active recall validation", () => {
   });
   it("limits mixed typing to learning cards", () => {
     for (const status of ["NEW", "LEARNING", "REVIEW", "MASTERED"] as const) {
-      expect(needsTyping({ ...card, status }, "TYPE_ONLY")).toBe(true);
+      expect(needsTyping({ ...card, status }, "TYPE_ONLY")).toBe(status !== "NEW");
+      expect(needsTyping({ ...card, status, repCount: 1 }, "TYPE_ONLY")).toBe(true);
       expect(needsTyping({ ...card, status }, "SWIPE_ONLY")).toBe(false);
       expect(needsTyping({ ...card, status }, "MIXED")).toBe(
         status === "LEARNING",

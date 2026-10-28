@@ -40,6 +40,16 @@ function legacyBackup() {
   };
 }
 describe("continuous data and migration", () => {
+  it("round trips recovered ease, manual mastery, and the enabled instant setting", () => {
+    const base = data.pairs["en-de"].words[0];
+    const mastered = reviewCard(base, "master", defaultSettings, 1);
+    const recovered = reviewCard({ ...base, id: "review", status: "REVIEW", step: 3, easeFactor: 2.3 }, "know", defaultSettings, 2);
+    const current = { ...data, version: 3, reviewOrder: 2, settings: { ...defaultSettings, instantMasterOnFirstTry: true },
+      pairs: { "en-de": { ...data.pairs["en-de"], words: [mastered, recovered] } } };
+    expect(recovered.easeFactor).toBeGreaterThan(2.3);
+    expect(validateData(current)).toBe(true);
+    expect(hydrateData(JSON.parse(JSON.stringify(current)))).toMatchObject(current);
+  });
   it("defaults older backups to unlimited and validates the goal range", () => {
     const oldSettings = { ...defaultSettings };
     delete (oldSettings as Partial<typeof oldSettings>).dailyWordGoal;

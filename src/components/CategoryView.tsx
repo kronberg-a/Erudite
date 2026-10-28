@@ -181,7 +181,8 @@ export function CategoryView({
               <button
                 className="category-practice outline-button"
                 aria-label={`${t("practice")}: ${category.name[settings.interfaceLanguage]}`}
-                disabled={!words.length}
+                disabled={!words.some((word) => word.status !== "MASTERED")}
+                title={words.length && words.every((word) => word.status === "MASTERED") ? t("completeSub") : undefined}
                 onClick={() =>
                   onPractice({ kind: "category", id: category.id })
                 }

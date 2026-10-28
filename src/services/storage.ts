@@ -109,8 +109,7 @@ function validStored(value: unknown, version: 1 | 2 | 3): boolean {
           (w.lastStudiedAt === undefined || Number.isFinite(w.lastStudiedAt)) &&
           (version !== 3 || (
             [w.interval, w.nextReviewDate, w.easeFactor].every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0) &&
-            w.easeFactor! >= 1.3 && w.easeFactor! <= 2.3 && integer(w.reviewRepetitions) &&
-            (w.status !== "MASTERED" || w.interval! >= 90)
+            w.easeFactor! >= 1.3 && integer(w.reviewRepetitions)
           )) &&
           integer(w.step) &&
           w.step <= (version === 1 ? 3 : 5) &&
@@ -163,7 +162,7 @@ export function hydrateData(value: unknown): AppData {
     interfaceLanguage: d.settings.interfaceLanguage,
     sourceLanguage: d.settings.sourceLanguage,
     targetLanguage: d.settings.targetLanguage,
-    instantMasterOnFirstTry: false,
+    instantMasterOnFirstTry: d.settings.instantMasterOnFirstTry,
     studyMode: d.settings.studyMode ?? defaultSettings.studyMode,
     strictAccents: d.settings.strictAccents ?? true,
     theme: d.settings.theme,

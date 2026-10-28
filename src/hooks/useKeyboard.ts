@@ -30,6 +30,7 @@ export function useKeyboard(
       const actions: Record<string, Action> = {
         ArrowLeft: "repeat",
         ArrowRight: "know",
+        ArrowUp: "master",
       };
       if (actions[e.key]) {
         e.preventDefault();

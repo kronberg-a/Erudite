@@ -4,10 +4,8 @@ import { ArrowRight, CircleHelp, Volume2 } from "lucide-react";
 import type { Evaluation, Settings, TypingInput, WordCard } from "../types";
 import type { T } from "../i18n/translations";
 import {
-  answerDiff,
   answerTarget,
   evaluateAnswer,
-  maskedSentence,
   nextHint,
   normalizeAnswer,
   sentenceParts,
@@ -17,6 +15,7 @@ interface Props {
   card: WordCard;
   settings: Settings;
   inputMode: TypingInput;
+  onInputModeChange?: (mode: TypingInput) => void;
   evaluation: Evaluation | null;
   onEvaluate: (result: Evaluation) => void;
   onListen: () => void;
@@ -45,7 +44,8 @@ export function HighlightedSentence({
 export function TypingCard({
   card,
   settings,
-  inputMode,
+  inputMode: initialInputMode,
+  onInputModeChange,
   evaluation,
   onEvaluate,
   onListen,
@@ -53,6 +53,8 @@ export function TypingCard({
   t,
 }: Props) {
   const [input, setInput] = useState("");
+  const [inputMode, setInputMode] = useState(initialInputMode);
+  const [failedInput, setFailedInput] = useState<string | null>(null);
   const [usedHint, setUsedHint] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const attemptCount = useRef(0);
@@ -83,6 +85,7 @@ export function TypingCard({
     }
   }, [inputMode, evaluation]);
   const chooseInput = (value: string) => {
+    setFailedInput(null);
     setInput(value);
     const available = [...tiles];
     const ids: number[] = [];
@@ -115,10 +118,12 @@ export function TypingCard({
           card.targetWord,
           settings.strictAccents,
           usedHint,
+          attemptCount.current,
         );
     if (!giveUp && result === "INCORRECT") {
       attemptCount.current += 1;
       setFailedAttempts(attemptCount.current);
+      setFailedInput(input);
       if (attemptCount.current < 3) {
         focusAnswer();
         inputRef.current?.select();
@@ -163,6 +168,9 @@ export function TypingCard({
       : evaluation === "ASSISTED"
         ? "assisted"
         : "incorrect";
+  const mistakeStyle = failedInput !== null
+    ? { animationName: failedAttempts % 2 ? "typing-shake" : "typing-shake-again" }
+    : undefined;
   return (
     <div className="typing-card" onKeyDown={keydown}>
       <p lang={settings.sourceLanguage} className="typing-translation">
@@ -171,34 +179,17 @@ export function TypingCard({
       {!evaluation ? (
         <>
           <p className="typing-instruction">{t("typePrompt")}</p>
-          {card.examples[0] && (
-            <div className="typing-clues">
-              <p lang={settings.sourceLanguage}>
-                {card.examples[0].translatedSentence}
-              </p>
-              {maskedSentence(
-                card.examples[0].targetSentence,
-                card.targetWord,
-              ) !== card.examples[0].targetSentence && (
-                <p lang={settings.targetLanguage} className="muted">
-                  {maskedSentence(
-                    card.examples[0].targetSentence,
-                    card.targetWord,
-                  )}
-                </p>
-              )}
-            </div>
-          )}
           {inputMode === "KEYBOARD" ? (
             <input
               ref={inputRef}
-              className="typing-input"
+              className={`typing-input ${failedInput !== null ? "typing-mistake" : ""}`}
+              style={mistakeStyle}
               type="text"
               value={input}
               maxLength={200}
               lang={settings.targetLanguage}
               aria-label={t("answer")}
-              aria-invalid={failedAttempts > 0}
+              aria-invalid={failedInput !== null}
               aria-describedby={attemptStatusId}
               autoComplete="off"
               autoCorrect="off"
@@ -210,7 +201,8 @@ export function TypingCard({
             <>
               <div
                 ref={slotRef}
-                className="tile-answer"
+                className={`tile-answer ${failedInput !== null ? "typing-mistake" : ""}`}
+                style={mistakeStyle}
                 tabIndex={0}
                 role="group"
                 aria-label={t("answer")}
@@ -227,6 +219,7 @@ export function TypingCard({
                       className="letter-tile inserted"
                       aria-label={`${t("removeLetter")}: ${tile.char === " " ? t("spaceCharacter") : tile.char}`}
                       onClick={() => {
+                        setFailedInput(null);
                         const next = selected.filter((_, i) => i !== index);
                         setSelected(next);
                         setInput(
@@ -256,6 +249,7 @@ export function TypingCard({
                       tile.char === " " ? t("spaceCharacter") : tile.char
                     }
                     onClick={() => {
+                      setFailedInput(null);
                       setSelected([...selected, tile.id]);
                       setInput(input + tile.char);
                       focusAnswer();
@@ -267,6 +261,16 @@ export function TypingCard({
               </div>
             </>
           )}
+          <div className="mobile-typing-inputs" role="group" aria-label={t("inputMode")}>
+            {(["KEYBOARD", "TILES"] as const).map((mode) => (
+              <button key={mode} type="button" className="text-button" aria-pressed={inputMode === mode} onClick={() => {
+                setInputMode(mode);
+                onInputModeChange?.(mode);
+              }}>
+                {t(mode === "KEYBOARD" ? "keyboard" : "tiles")}
+              </button>
+            ))}
+          </div>
           <p id={attemptStatusId} className="typing-attempts" role="status">
             {failedAttempts > 0 && <span>{t("tryAgain")} </span>}
             {t("attemptsRemaining")}: {3 - failedAttempts}
@@ -303,24 +307,6 @@ export function TypingCard({
         <>
           <div className="typing-correct-word">
             <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
-            {evaluation === "INCORRECT" && (
-              <p
-                className="answer-diff"
-                aria-label={t("answerDiff")}
-                lang={settings.targetLanguage}
-              >
-                {answerDiff(input, card.targetWord, settings.strictAccents).map(
-                  (p, i) =>
-                    p.kind === "wrong" ? (
-                      <del key={i}>{p.text}</del>
-                    ) : (
-                      <span key={i} className={p.kind}>
-                        {p.text}
-                      </span>
-                    ),
-                )}
-              </p>
-            )}
             {card.transcription && (
               <p className="transcription">{card.transcription}</p>
             )}

@@ -29,20 +29,22 @@ export function evaluateAnswer(
   target: string,
   strictAccents: boolean,
   usedHint: boolean,
+  failedAttempts = 0,
 ): Evaluation {
   if (
     normalizeAnswer(input, strictAccents) !==
     normalizeAnswer(answerTarget(target), strictAccents)
   )
     return "INCORRECT";
-  return usedHint ? "ASSISTED" : "CORRECT";
+  return usedHint || failedAttempts > 0 ? "ASSISTED" : "CORRECT";
 }
 export function needsTyping(
   card: WordCard,
   mode: Settings["studyMode"],
 ): boolean {
   return (
-    mode === "TYPE_ONLY" || (mode === "MIXED" && card.status === "LEARNING")
+    (mode === "TYPE_ONLY" && (card.status !== "NEW" || card.repCount > 0)) ||
+    (mode === "MIXED" && card.status === "LEARNING")
   );
 }
 export function nextHint(

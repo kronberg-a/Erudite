@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   BookOpen,
   Check,
   RotateCcw,
@@ -15,12 +16,12 @@ import type {
   PairData,
   Settings,
   StudySelection,
+  TypingInput,
   WordCard,
 } from "../types";
 import type { T } from "../i18n/translations";
 import { reviewCard, reinsertionDistance } from "../core/srsEngine";
 import {
-  availableMode,
   buildStudyQueue,
   continueQueue,
   selectedWords,
@@ -49,6 +50,7 @@ interface Undo {
   reviewOrder: number;
   mode: Mode;
   completed: number;
+  initialSessionCount: number;
   dailyProgress: DailyProgress;
 }
 export function StudyView({
@@ -69,26 +71,46 @@ export function StudyView({
   const [queue, setQueue] = useState<string[]>([]);
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(0);
+  const [initialSessionCount, setInitialSessionCount] = useState(0);
   const [history, setHistory] = useState<Undo[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [lastAction, setLastAction] = useState<Action | null>(null);
-  const [modeNotice, setModeNotice] = useState(false);
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [typingInput, setTypingInput] = useState<TypingInput>("KEYBOARD");
   const [turn, setTurn] = useState(0);
-  const nextButton = useRef<HTMLButtonElement>(null);
+  const gradeButton = useRef<HTMLButtonElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
   const evaluated = useRef(false);
   const committedTurn = useRef(-1);
-  const available = buildStudyQueue(pair, availableMode(pair, mode, selection), selection);
+  const available = buildStudyQueue(pair, mode, selection);
   const inProgress = buildStudyQueue(pair, "review", selection).length;
   const fresh = buildStudyQueue(pair, "new", selection).length;
   const pool = selectedWords(pair, selection);
   const mastered = pool.filter((w) => w.status === "MASTERED").length;
-  const allMastered = pool.length > 0 && mastered === pool.length && !available.length;
+  const sessionComplete = !started && completed > 0 && queue.length === 0;
+  const sessionVisible = started || sessionComplete;
+  const wordsById = new Map(pair.words.map((word) => [word.id, word]));
+  const queuedWords = queue.map((id) => wordsById.get(id));
+  const newInQueue = queuedWords.filter((word) => word?.status === "NEW").length;
+  const learningInQueue = queuedWords.filter((word) => word?.status === "LEARNING").length;
+  const learningProgress = queuedWords.reduce(
+    (sum, word) =>
+      sum +
+      (word?.status === "LEARNING"
+        ? Math.min(2, Math.max(0, word.step)) / 3
+        : 0),
+    0,
+  );
+  const reviewInQueue = queuedWords.filter((word) => word?.status === "REVIEW" || word?.status === "MASTERED").length;
+  const resolvedCount = Math.max(0, initialSessionCount - queue.length);
+  const total = Math.max(initialSessionCount, queue.length + resolvedCount);
   const card = pair.words.find((w) => w.id === queue[0]);
   const typing = !!card && needsTyping(card, settings.studyMode);
+  const firstEncounter = card?.status === "NEW" && card.repCount === 0;
+  const repeatLabel = firstEncounter ? "dontKnow" : "repeat";
+  const knowLabel = firstEncounter ? "alreadyKnow" : "know";
   const progress = todayProgress(dailyProgress);
   const goal = settings.dailyWordGoal;
   const goalReached = started && goal != null && progress.wordIds.length >= goal && progress.acknowledgedGoal !== goal;
@@ -116,17 +138,15 @@ export function StudyView({
     setAudioError(false);
   };
   useEffect(() => {
-    if (evaluation) nextButton.current?.focus({ preventScroll: true });
+    if (evaluation) gradeButton.current?.focus({ preventScroll: true });
   }, [evaluation]);
   const category =
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
   const start = () => {
-    const nextMode = availableMode(pair, mode, selection);
-    const nextQueue = buildStudyQueue(pair, nextMode, selection);
+    const nextQueue = buildStudyQueue(pair, mode, selection);
     if (!nextQueue.length) return;
-    setMode(nextMode);
-    setModeNotice(nextMode !== mode);
     setQueue(nextQueue);
+    setInitialSessionCount(nextQueue.length);
     setStarted(true);
     setCompleted(0);
     setHistory([]);
@@ -134,12 +154,12 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (a === "master" || !started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
+    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
       return;
     committedTurn.current = turn;
     setLastAction(a);
     setReverse(false);
-    const assisted = typing && evaluation === "ASSISTED";
+    const assisted = a !== "master" && typing && evaluation === "ASSISTED";
     const updated = reviewCard(card, a, settings, reviewOrder + 1, {
       assisted,
     });
@@ -153,6 +173,7 @@ export function StudyView({
         reviewOrder,
         mode,
         completed,
+        initialSessionCount,
         dailyProgress: progress,
       },
     ]);
@@ -160,7 +181,7 @@ export function StudyView({
       ...pair,
       words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
     };
-    update(nextPair, reviewOrder + 1, a === "know"
+    update(nextPair, reviewOrder + 1, a === "know" || a === "master"
       ? recordRecall(progress, `${settings.sourceLanguage}-${settings.targetLanguage}`, card.id)
       : progress);
     const continuation = continueQueue(
@@ -170,10 +191,10 @@ export function StudyView({
       updated,
       reinsertionDistance(card, a, assisted),
       selection,
+      assisted,
     );
     setQueue(continuation.queue);
-    setMode(continuation.mode);
-    if (continuation.switched) setModeNotice(true);
+    if (!continuation.queue.length) setStarted(false);
     setCompleted((n) => n + 1);
     resetTurn();
   };
@@ -191,9 +212,10 @@ export function StudyView({
       todayProgress(previous.dailyProgress),
     );
     setQueue(previous.queue);
+    setStarted(true);
     setCompleted(previous.completed);
+    setInitialSessionCount(previous.initialSessionCount);
     setMode(previous.mode);
-    setModeNotice(false);
     setLastAction(null);
     setHistory(history.slice(0, -1));
     resetTurn();
@@ -216,41 +238,39 @@ export function StudyView({
     action,
     typing ? next : reveal,
     undo,
-    started && (goalReached || !typing || revealed),
+    sessionComplete || (started && (goalReached || !typing || revealed)),
   );
   const { drag, handlers } = useSwipeGesture(
     action,
     reveal,
     typing && !revealed,
   );
-  const tint = drag.x > 0 ? "know" : "repeat";
-  const distance = Math.abs(drag.x);
+  const tint = drag.y < -40 && Math.abs(drag.y) > Math.abs(drag.x) ? "master" : drag.x > 0 ? "know" : "repeat";
+  const distance = Math.abs(tint === "master" ? drag.y : drag.x);
   const transform = `translate(${drag.x}px, ${drag.y}px) rotate(${(drag.x / 100) * 8}deg)`;
   const changeMode = (requested: Mode) => {
     if (started) return;
     setMode(requested);
-    setModeNotice(false);
+    setCompleted(0);
+    setInitialSessionCount(0);
     setHistory([]);
     resetTurn();
   };
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <p className="eyebrow">{t("learn")}</p>
-          <h1>{t("study")}</h1>
-          <p className="subtitle">{t("masteryRoute")}</p>
+      {!started && (
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">{t("learn")}</p>
+            <h1>{t("study")}</h1>
+            <p className="subtitle">{t("masteryRoute")}</p>
+          </div>
         </div>
-      </div>
-      {selection && (
+      )}
+      {!started && selection && (
         <p className="practice-note">{t("selectedPracticeHint")}</p>
       )}
-      {modeNotice && (
-        <p className="practice-note" role="status">
-          {t("modeSwitched")}
-        </p>
-      )}
-      <div className="summary-grid">
+      {!started && <div className="summary-grid">
         <div>
           <span className="stat-dot blue" />
           <span>{t("new")}</span>
@@ -266,7 +286,7 @@ export function StudyView({
           <span>{t("mastered")}</span>
           <strong>{mastered.toString().padStart(2, "0")}</strong>
         </div>
-      </div>
+      </div>}
       <section className="study-workspace">
         {!started && (
           <section className="session-settings" aria-label={t("sessionSettings")}>
@@ -286,9 +306,6 @@ export function StudyView({
             </div>
           </section>
         )}
-        {goal != null && (
-          <p className="daily-goal-progress">{t("dailyGoal")}: {progress.wordIds.length} / {goal}</p>
-        )}
         <div className="session-bar">
           <button
             className="text-button"
@@ -298,19 +315,34 @@ export function StudyView({
             <RotateCcw size={15} />
             {t("undo")}
           </button>
-          <span className="eyebrow">{t("session")}</span>
+          {sessionVisible ? (
+            <div className="session-composition">
+              <span className="session-pill session-pill-new" title={t("new")}>
+                <span className="session-dot" aria-hidden="true" />
+                <span className="sr-only">{t("new")}: </span><strong>{newInQueue}</strong>
+              </span>
+              <span className="session-pill session-pill-active" title={`${t("learning")} / ${t("review")}`}>
+                <span className="session-dot" aria-hidden="true" />
+                <span className="sr-only">{t("learning")} / {t("review")}: </span><strong>{learningInQueue + reviewInQueue}</strong>
+              </span>
+              <span className="session-pill session-pill-resolved" title={t("sessionResolved")}>
+                <span className="session-dot" aria-hidden="true" />
+                <span className="sr-only">{t("sessionResolved")}: </span><strong>{resolvedCount}</strong>
+              </span>
+            </div>
+          ) : <span className="eyebrow">{t("session")}</span>}
           <span className="session-count">
-            {started ? `${completed} ${t("practiced")}` : `${available.length}`}{" "}
-            <span>{started ? `· ${queue.length} ${t("remaining")}` : ""}</span>
+            {!sessionVisible && <span>{available.length}</span>}
+            {goal != null && <span className="session-goal" aria-label={`${t("dailyGoal")}: ${progress.wordIds.length} / ${goal}`} title={t("dailyGoal")}>
+              <span className="sr-only">{t("dailyGoal")}: </span>{progress.wordIds.length}/{goal}
+            </span>}
           </span>
         </div>
-        <div className="progress-track">
-          <div
-            style={{
-              width: `${pool.length ? (mastered / pool.length) * 100 : 0}%`,
-            }}
-          />
-        </div>
+        {sessionVisible && <div className="progress-track" role="progressbar" aria-label={t("sessionResolved")} aria-valuemin={0} aria-valuemax={total} aria-valuenow={resolvedCount}>
+          <div className="progress-resolved" style={{ width: `${total ? resolvedCount / total * 100 : 0}%` }} />
+          <div className="progress-learning" style={{ width: `${total ? learningProgress / total * 100 : 0}%` }} />
+          <div className="progress-remaining" style={{ width: `${total ? (queue.length - learningProgress) / total * 100 : 0}%` }} />
+        </div>}
         {goalReached ? (
           <div className="session-empty daily-goal-card" role="region" aria-labelledby="daily-goal-title">
             <div className="empty-icon goal-check" aria-hidden="true"><Check size={28} /></div>
@@ -325,6 +357,8 @@ export function StudyView({
               <button className="outline-button" onClick={() => {
                 update(pair, reviewOrder, { ...progress, acknowledgedGoal: goal });
                 setStarted(false);
+                setCompleted(0);
+                setInitialSessionCount(0);
                 setQueue([]);
                 setHistory([]);
               }}>{t("end")}</button>
@@ -382,7 +416,8 @@ export function StudyView({
                     key={turn}
                     card={card}
                     settings={settings}
-                    inputMode="KEYBOARD"
+                    inputMode={typingInput}
+                    onInputModeChange={setTypingInput}
                     evaluation={evaluation}
                     onEvaluate={evaluate}
                     onListen={() =>
@@ -456,64 +491,62 @@ export function StudyView({
               </article>
             </div>
             {(!typing || revealed) && (
-              <div className="action-bar">
+              <div className={`action-bar ${typing ? "typing-actions" : ""}`}>
                 <button
+                  ref={typing && evaluation !== "CORRECT" ? gradeButton : undefined}
                   className={`action-repeat ${typing && evaluation !== "CORRECT" ? "preselected" : ""}`}
                   onClick={() => action("repeat")}
                 >
                   <ArrowLeft size={18} />
-                  <span>{t("repeat")}</span>
+                  <span>{t(repeatLabel)}</span>
                 </button>
-                <button
-                  ref={nextButton}
-                  className={`action-reveal ${typing ? "action-next" : ""}`}
-                  disabled={!typing && revealed}
-                  onClick={typing ? next : reveal}
+                {!typing && <button
+                  className="action-reveal"
+                  disabled={revealed}
+                  onClick={reveal}
                 >
-                  {typing ? <ArrowRight size={18} /> : <BookOpen size={18} />}
-                  <span>{t(typing ? "next" : "reveal")}</span>
-                </button>
+                  <BookOpen size={18} />
+                  <span>{t("reveal")}</span>
+                </button>}
                 <button
+                  ref={typing && evaluation === "CORRECT" ? gradeButton : undefined}
                   className={`action-know ${typing && evaluation === "CORRECT" ? "preselected" : ""}`}
                   onClick={() => action("know")}
                 >
-                  <span>{t("know")}</span>
+                  <span>{t(knowLabel)}</span>
                   <ArrowRight size={18} />
                 </button>
               </div>
+            )}
+            {(!typing || revealed) && (
+              <button className="master-button" onClick={() => action("master")}>
+                <ArrowUp size={15} /> {t("master")}
+              </button>
             )}
           </>
         ) : (
           <div className="session-empty">
             <div className="empty-icon">
-              {allMastered ? <Check size={28} /> : <BookOpen size={28} />}
+              {sessionComplete ? <Check size={28} /> : <BookOpen size={28} />}
             </div>
-            <h2>{allMastered ? t("complete") : t("ready")}</h2>
+            <h2 role={sessionComplete ? "status" : undefined}>{sessionComplete ? t("sessionComplete") : t("ready")}</h2>
             <p>
-              {allMastered
-                ? t("completeSub")
+              {sessionComplete
+                ? t("sessionCompleteSub")
                 : available.length
                   ? `${available.length} ${t("remaining")}. ${t("studySub")}`
-                  : t("empty")}
+                  : t(pool.length && mastered === pool.length ? "completeSub" : pool.length ? "emptyMode" : "empty")}
             </p>
-            {started && (
-              <button className="outline-button" onClick={() => {
-                setStarted(false);
-                setQueue([]);
-                setHistory([]);
-                setModeNotice(false);
-                resetTurn();
-              }}>{t("restart")}</button>
-            )}
             <button
               className="primary-button"
-              onClick={available.length ? start : openLibrary}
+              onClick={available.length ? start : pool.length ? undefined : openLibrary}
+              disabled={!available.length && pool.length > 0}
             >
               {available.length
-                ? started
+                ? sessionComplete
                   ? t("restart")
                   : t("start")
-                : t("categories")}
+                : t(pool.length ? "start" : "categories")}
               <ArrowRight size={17} />
             </button>
           </div>
@@ -524,15 +557,16 @@ export function StudyView({
         {started && !goalReached && card && (!typing || revealed) && (
           <div className="keyboard-hints">
             <span>
-              <kbd>←</kbd> {t("repeat")}
+              <kbd>←</kbd> {t(repeatLabel)}
             </span>
             <span>
               <kbd>{typing ? "Enter / Space" : "Space"}</kbd>{" "}
               {t(typing ? "next" : "reveal")}
             </span>
             <span>
-              <kbd>→</kbd> {t("know")}
+              <kbd>→</kbd> {t(knowLabel)}
             </span>
+            <span><kbd>↑</kbd> {t("master")}</span>
             <span>
               <kbd>Ctrl Z</kbd> {t("undo")}
             </span>
@@ -543,6 +577,8 @@ export function StudyView({
             className="end-session"
             onClick={() => {
               setStarted(false);
+              setCompleted(0);
+              setInitialSessionCount(0);
               setQueue([]);
               setHistory([]);
             }}

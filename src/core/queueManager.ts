@@ -34,14 +34,16 @@ export function buildQueue(
   const now = Date.now();
   const fresh = available.filter((w) => w.status === "NEW");
   const progress = available
-    .filter((w) => w.status !== "NEW")
+    .filter((w) => w.status === "LEARNING" || (w.status === "REVIEW" && (w.nextReviewDate ?? 0) <= now))
     .sort(
-      (a, b) => Number((a.nextReviewDate ?? 0) > now) -
-        Number((b.nextReviewDate ?? 0) > now) ||
+      (a, b) => Number(a.status !== "LEARNING") - Number(b.status !== "LEARNING") ||
       a.step - b.step || a.lastReviewedOrder - b.lastReviewedOrder,
     );
+  const earlyReview = available
+    .filter((w) => w.status === "REVIEW" && (w.nextReviewDate ?? 0) > now)
+    .sort((a, b) => (a.nextReviewDate ?? 0) - (b.nextReviewDate ?? 0) || a.lastReviewedOrder - b.lastReviewedOrder);
   if (mode === "new") return fresh.map((w) => w.id);
-  if (mode === "review") return progress.map((w) => w.id);
+  if (mode === "review") return [...progress, ...earlyReview].map((w) => w.id);
   const result: WordCard[] = [];
   for (
     let p = 0, n = 0;
@@ -49,13 +51,17 @@ export function buildQueue(
     p += 3, n += 2
   )
     result.push(...progress.slice(p, p + 3), ...fresh.slice(n, n + 2));
-  return result.map((w) => w.id);
+  return [...result, ...earlyReview].map((w) => w.id);
 }
 export function buildStudyQueue(
   pair: PairData,
   mode: Mode,
   selection?: StudySelection,
 ): string[] {
+  if (selection?.kind === "word") {
+    const word = pair.words.find((w) => w.id === selection.id);
+    if (word?.status === "MASTERED") return [word.id];
+  }
   return buildQueue(
     selectedWords(pair, selection),
     pair.categories.map((c) => ({ ...c, isActiveForStudy: true })),
@@ -78,35 +84,15 @@ export function continueQueue(
   updated: WordCard,
   distance: number,
   selection?: StudySelection,
+  assisted = false,
 ): { queue: string[]; mode: Mode; switched: boolean } {
-  const eligible = buildStudyQueue(pair, mode, selection);
-  const ids = new Set(eligible);
-  const next = advanceQueue(queue, updated, distance).filter((id) =>
-    ids.has(id),
-  );
-  const existing = new Set(next);
-  next.push(...eligible.filter((id) => !existing.has(id)));
-  if (
-    next.length ||
-    !selectedWords(pair, selection).length
-  )
-    return { queue: next, mode, switched: false };
-  const fallback = mode === "new" ? "review" : "new";
-  return {
-    queue: buildStudyQueue(pair, fallback, selection),
-    mode: fallback,
-    switched: true,
-  };
-}
-export function availableMode(
-  pair: PairData,
-  mode: Mode,
-  selection?: StudySelection,
-): Mode {
-  return buildStudyQueue(pair, mode, selection).length ||
-    !selectedWords(pair, selection).length
-    ? mode
-    : mode === "new"
-      ? "review"
-      : "new";
+  // Membership is fixed at session start. Keep learning/failed/assisted
+  // cards in this session, but retire successfully learned or reviewed cards.
+  const ids = new Set(selectedWords(pair, selection).map((word) => word.id));
+  const finished = !assisted &&
+    (updated.status === "REVIEW" || updated.status === "MASTERED");
+  const next = finished
+    ? queue.slice(1).filter((id) => id !== updated.id)
+    : advanceQueue(queue, updated, distance);
+  return { queue: next.filter((id) => ids.has(id)), mode, switched: false };
 }

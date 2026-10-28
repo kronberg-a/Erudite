@@ -2,7 +2,7 @@ import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
   scheduledReview: ["Scheduled review", "Плановое повторение", "Geplante Wiederholung", "Révision prévue", "Ripasso programmato", "Repaso programado"],
-  masteryRoute: ["Practise freely. Memorized requires 3 correct learning recalls, then successful scheduled reviews through a 90-day interval. Early practice does not advance the schedule.", "Практикуйтесь без ограничений. Для запоминания нужны 3 верных ответа, затем плановые повторения до интервала 90 дней. Досрочная практика не ускоряет график.", "Übe beliebig oft. Nach 3 richtigen Lernantworten folgen geplante Wiederholungen bis zu einem Intervall von 90 Tagen. Frühes Üben beschleunigt den Zeitplan nicht.", "Pratiquez librement. Il faut 3 rappels corrects, puis des révisions prévues jusqu’à un intervalle de 90 jours. La pratique anticipée ne fait pas avancer le calendrier.", "Esercitati liberamente. Servono 3 risposte corrette, poi ripassi programmati fino a un intervallo di 90 giorni. La pratica anticipata non accelera il calendario.", "Practica libremente. Se necesitan 3 respuestas correctas y repasos programados hasta un intervalo de 90 días. La práctica anticipada no adelanta el calendario."],
+  masteryRoute: ["Practise freely. Learn in three steps, then follow scheduled reviews. Mark known words as memorized at any time.", "Практикуйтесь без ограничений. Три шага обучения, затем плановые повторения. Знакомые слова можно отметить как запомненные в любой момент.", "Übe beliebig oft. Lerne in drei Schritten und wiederhole nach Zeitplan. Bekannte Wörter kannst du jederzeit als verinnerlicht markieren.", "Pratiquez librement. Trois étapes d’apprentissage, puis des révisions programmées. Marquez les mots connus comme mémorisés à tout moment.", "Esercitati liberamente. Tre passi di apprendimento, poi ripassi programmati. Puoi segnare le parole note come memorizzate in qualsiasi momento.", "Practica libremente. Tres pasos de aprendizaje y después repasos programados. Puedes marcar palabras conocidas como memorizadas en cualquier momento."],
   translationPreview: ["Translation preview", "Предпросмотр перевода", "Übersetzungsvorschau", "Aperçu de la traduction", "Anteprima della traduzione", "Vista previa de traducción"],
   previewTranslation: ["Preview translation", "Перевод для добавления", "Übersetzung zum Hinzufügen", "Traduction à ajouter", "Traduzione da aggiungere", "Traducción para añadir"],
   addToCollection: ["Add to list", "В список", "Zur Liste", "Ajouter à la liste", "Aggiungi alla lista", "Añadir a la lista"],
@@ -185,6 +185,8 @@ const rows = {
     "Repetir",
   ],
   know: ["I know", "Знаю", "Gewusst", "Je sais", "Lo so", "Lo sé"],
+  dontKnow: ["Don’t know", "Не знаю", "Weiß ich nicht", "Je ne sais pas", "Non lo so", "No lo sé"],
+  alreadyKnow: ["Already know", "Уже знаю", "Weiß ich schon", "Je sais déjà", "Lo so già", "Ya lo sé"],
   master: [
     "Already mastered",
     "Уже освоено",
@@ -233,6 +235,30 @@ const rows = {
     "Quando vuoi tu.",
     "Cuando tú quieras.",
   ],
+  sessionComplete: [
+    "Session complete.", "Сессия завершена.", "Sitzung abgeschlossen.",
+    "Session terminée.", "Sessione completata.", "Sesión completada.",
+  ],
+  sessionResolved: [
+    "Completed in session", "Завершено за сессию", "In dieser Sitzung abgeschlossen",
+    "Terminés dans cette session", "Completate nella sessione", "Completadas en la sesión",
+  ],
+  sessionCompleteSub: [
+    "You finished the words for this mode in your selected folders.",
+    "Вы завершили слова для этого режима в выбранных папках.",
+    "Du hast die Wörter für diesen Modus in deinen ausgewählten Ordnern abgeschlossen.",
+    "Vous avez terminé les mots de ce mode dans les dossiers sélectionnés.",
+    "Hai completato le parole per questa modalità nelle cartelle selezionate.",
+    "Has completado las palabras de este modo en las carpetas seleccionadas.",
+  ],
+  emptyMode: [
+    "No words for this mode in your selected folders. Choose another mode or folder.",
+    "В выбранных папках нет слов для этого режима. Выберите другой режим или папку.",
+    "Keine Wörter für diesen Modus in den ausgewählten Ordnern. Wähle einen anderen Modus oder Ordner.",
+    "Aucun mot pour ce mode dans les dossiers sélectionnés. Choisissez un autre mode ou dossier.",
+    "Nessuna parola per questa modalità nelle cartelle selezionate. Scegli un’altra modalità o cartella.",
+    "No hay palabras para este modo en las carpetas seleccionadas. Elige otro modo o carpeta.",
+  ],
   empty: [
     "No words in this selection. Add words or select another folder.",
     "В этой выборке нет слов. Добавьте слова или выберите другую папку.",
@@ -249,14 +275,7 @@ const rows = {
     "Tutte le parole sono imparate.",
     "Todas las palabras dominadas.",
   ],
-  completeSub: [
-    "Reset a word or folder whenever you want to practice again.",
-    "Сбросьте прогресс слова или папки, чтобы практиковать снова.",
-    "Setze ein Wort oder einen Ordner zurück, um erneut zu üben.",
-    "Réinitialisez un mot ou un dossier pour pratiquer à nouveau.",
-    "Azzera una parola o cartella per esercitarti di nuovo.",
-    "Reinicia una palabra o carpeta para practicar de nuevo.",
-  ],
+  completeSub: ["Practice a memorized word individually, or reset a word or folder to include it in regular sessions again.", "Практикуйте запомненное слово отдельно или сбросьте слово либо папку для обычных сессий.", "Übe verinnerlichte Wörter einzeln oder setze ein Wort oder einen Ordner für reguläre Sitzungen zurück.", "Pratiquez un mot mémorisé individuellement ou réinitialisez un mot ou dossier pour les sessions normales.", "Esercitati con una parola memorizzata singolarmente o azzera una parola o cartella per le sessioni normali.", "Practica una palabra memorizada individualmente o reinicia una palabra o carpeta para las sesiones normales."],
   start: [
     "Start practice",
     "Начать",
@@ -519,14 +538,7 @@ const rows = {
     "Imparata al primo tentativo",
     "Dominar al primer intento",
   ],
-  instantHint: [
-    "Known new words become mastered immediately. Otherwise, progress through five recall steps.",
-    "Знакомые новые слова сразу считаются освоенными. Иначе — пять шагов запоминания.",
-    "Bekannte neue Wörter gelten sofort als gelernt. Sonst folgen fünf Abrufschritte.",
-    "Les nouveaux mots connus sont maîtrisés immédiatement. Sinon, cinq étapes de rappel.",
-    "Le nuove parole note sono imparate subito. Altrimenti, cinque passi di richiamo.",
-    "Las palabras nuevas conocidas se dominan al instante. Si no, cinco pasos de recuerdo.",
-  ],
+  instantHint: ["An unassisted Know on a new word marks it as memorized immediately. Otherwise, complete three learning recalls and scheduled reviews.", "Ответ «Знаю» без помощи сразу отмечает новое слово как запомненное. Иначе нужны три верных ответа и плановые повторения.", "Ein neues Wort gilt bei „Gewusst“ ohne Hilfe sofort als verinnerlicht. Sonst folgen drei Lernantworten und geplante Wiederholungen.", "Un nouveau mot reconnu sans aide est immédiatement mémorisé. Sinon, trois rappels corrects et des révisions programmées sont nécessaires.", "Una parola nuova riconosciuta senza aiuto diventa subito memorizzata. Altrimenti servono tre risposte corrette e ripassi programmati.", "Una palabra nueva reconocida sin ayuda se memoriza al instante. Si no, completa tres respuestas correctas y repasos programados."],
   appearance: [
     "Appearance",
     "Оформление",
@@ -633,6 +645,14 @@ const rows = {
     "Le parole in apprendimento richiedono la scrittura. Le altre usano le schede.",
     "Las palabras en aprendizaje requieren escribir. Las otras usan tarjetas.",
   ],
+  typeOnlyHint: [
+    "Unseen words are introduced once as flashcards. Every later encounter requires typing.",
+    "Незнакомые слова сначала показываются на карточке. При следующих встречах требуется ввод.",
+    "Neue Wörter werden einmal als Karte gezeigt. Danach wird jede Antwort getippt.",
+    "Les mots inconnus sont présentés une fois sur une carte. Ensuite, chaque réponse doit être saisie.",
+    "Le parole nuove vengono mostrate una volta su una scheda. Poi ogni risposta richiede la scrittura.",
+    "Las palabras nuevas se presentan una vez como tarjetas. Después, cada respuesta debe escribirse.",
+  ],
   strictAccents: [
     "Require exact accents",
     "Учитывать диакритику",
@@ -709,12 +729,12 @@ const rows = {
   next: ["Next", "Далее", "Weiter", "Suivant", "Avanti", "Siguiente"],
   correct: ["Correct", "Верно", "Richtig", "Correct", "Corretto", "Correcto"],
   assisted: [
-    "Correct with a hint",
-    "Верно с подсказкой",
-    "Richtig mit Hinweis",
-    "Correct avec un indice",
-    "Corretto con suggerimento",
-    "Correcto con pista",
+    "Correct with assistance",
+    "Верно с помощью",
+    "Richtig mit Hilfe",
+    "Correct avec aide",
+    "Corretto con aiuto",
+    "Correcto con ayuda",
   ],
   incorrect: [
     "Not quite",

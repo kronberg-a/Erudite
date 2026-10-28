@@ -85,6 +85,39 @@ function fill(input: HTMLInputElement, value: string) {
   });
 }
 describe("new and reset word practice", () => {
+  it("persists instant mastery and excludes newly mastered words from regular sessions after reload", async () => {
+    await renderApp();
+    clickText("Settings");
+    act(() => container.querySelector<HTMLInputElement>("#instant-master")!.click());
+    expect(JSON.parse(localStorage.getItem("erudite:v3")!).settings.instantMasterOnFirstTry).toBe(true);
+    clickText("Learn");
+    act(() => container.querySelector<HTMLInputElement>('input[name="session-mode"][value="new"]')!.click());
+    clickText("Start practice");
+    clickText("Already know");
+    expect(container.textContent).toContain("Session complete.");
+    expect(JSON.parse(localStorage.getItem("erudite:v3")!).pairs["en-de"].words.find((w: { id: string }) => w.id === "older-new")).toMatchObject({ status: "MASTERED", step: 5, interval: 90 });
+    act(() => root.unmount());
+    root = createRoot(container);
+    vi.resetModules();
+    await renderApp();
+    expect(JSON.parse(localStorage.getItem("erudite:v3")!).settings.instantMasterOnFirstTry).toBe(true);
+    clickText("Start practice");
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuemax")).toBe("1");
+    expect(container.querySelector("article")?.textContent).not.toContain("Older new word");
+  });
+  it("disables regular folder practice when all words are memorized but allows individual practice", async () => {
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
+    stored.pairs["en-de"].words = stored.pairs["en-de"].words.map((word) => ({ ...word, status: "MASTERED", step: 5 }));
+    localStorage.setItem("erudite:v3", JSON.stringify(stored));
+    await renderApp();
+    clickText("Vocabulary");
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Practice: Core vocabulary"]')?.disabled).toBe(true);
+    clickLabel("Practice: Reset me");
+    clickText("Start practice");
+    expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
+    clickText("I know");
+    expect(container.textContent).toContain("Session complete.");
+  });
   it("requires session setup, respects folder selection, and restores setup after ending", async () => {
     await renderApp();
     expect(container.querySelector("article")).toBeNull();
@@ -117,9 +150,13 @@ describe("new and reset word practice", () => {
     ).toBe(true);
     clickLabel("Practice: Core vocabulary");
     clickText("Start practice");
+    expect(container.querySelector(".summary-grid")).toBeNull();
+    expect(container.querySelector(".session-pill-new strong")?.textContent).toBe("0");
+    expect(container.querySelector(".session-pill-active strong")?.textContent).toBe("3");
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuemax")).toBe("3");
     expect(container.querySelector("article")).not.toBeNull();
   });
-  it("does not expose the selected word in the typing-mode header", async () => {
+  it("introduces unseen words as flashcards before hiding them for typing", async () => {
     const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     stored.settings.studyMode = "TYPE_ONLY";
     localStorage.setItem("erudite:v3", JSON.stringify(stored));
@@ -128,6 +165,9 @@ describe("new and reset word practice", () => {
     clickLabel("Reset progress: Reset me");
     clickLabel("Practice: Reset me");
     clickText("Start practice");
+    expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
+    expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
+    clickText("Already know");
     expect(container.querySelector("main")?.textContent).not.toContain(
       "Reset me",
     );

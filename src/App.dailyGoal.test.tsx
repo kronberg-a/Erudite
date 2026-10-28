@@ -44,7 +44,10 @@ function click(text: string) {
   if (!button) throw new Error(`Missing ${text}`);
   act(() => button.click());
 }
-function grade() { click("I know"); }
+function grade() {
+  const button = container.querySelector<HTMLButtonElement>(".action-know")!;
+  act(() => button.click());
+}
 
 describe("daily word goal", () => {
   it("accepts a typed goal from 1 to 50 and preserves the unlimited option", async () => {
@@ -136,21 +139,21 @@ describe("daily word goal", () => {
     root = createRoot(container);
     vi.resetModules();
     await renderApp();
-    expect(container.textContent).toContain("Daily word goal: 1 / 1");
+    expect(container.querySelector(".session-goal")?.getAttribute("aria-label")).toBe("Daily word goal: 1 / 1");
     click("Start practice");
     expect(container.textContent).not.toContain("Daily goal reached");
     expect(container.querySelector("article")).not.toBeNull();
   });
-  it("does not count Repeat and ignores the removed mastery shortcut", async () => {
+  it("does not count Repeat but counts a committed manual mastery", async () => {
     await renderApp();
     click("Start practice");
-    click("Repeat");
+    click("Don’t know");
+    expect(stored().dailyProgress?.wordIds).toHaveLength(0);
     const before = stored();
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
-    expect(stored()).toEqual(before);
-    expect(container.querySelector(".master-button")).toBeNull();
-    expect(stored().dailyProgress?.wordIds).toHaveLength(0);
-    expect(container.textContent).not.toContain("Daily goal reached");
+    expect(stored().reviewOrder).toBe(before.reviewOrder + 1);
+    expect(stored().dailyProgress?.wordIds).toHaveLength(1);
+    expect(container.textContent).toContain("Daily goal reached");
   });
   it("does not pause unlimited practice", async () => {
     const data = stored();
@@ -166,6 +169,7 @@ describe("daily word goal", () => {
     const data = stored();
     data.settings.studyMode = "TYPE_ONLY";
     const pair = data.pairs["en-de"];
+    pair.words[0] = { ...pair.words[0], status: "LEARNING", step: 0 };
     const word = pair.words.find((w) => w.id === buildStudyQueue(pair, "mixed")[0])!;
     localStorage.setItem("erudite:v3", JSON.stringify(data));
     await renderApp();
@@ -178,10 +182,10 @@ describe("daily word goal", () => {
     click("Check");
     expect(container.textContent).not.toContain("Daily goal reached");
     expect(stored().reviewOrder).toBe(0);
-    click("Next");
+    click("I know");
     expect(container.textContent).toContain("Daily goal reached");
     click("Continue learning");
-    expect(container.querySelector('[aria-label="Your answer"]')).not.toBeNull();
+    expect(container.querySelector(".card-prompt")).not.toBeNull();
   });
   it("resets at local midnight during an open session", async () => {
     vi.setSystemTime(new Date(2026, 9, 27, 23, 59, 59));
@@ -191,7 +195,7 @@ describe("daily word goal", () => {
     expect(container.textContent).toContain("Daily goal reached");
     act(() => vi.advanceTimersByTime(1000));
     expect(container.textContent).not.toContain("Daily goal reached");
-    expect(container.textContent).toContain("Daily word goal: 0 / 1");
+    expect(container.querySelector(".session-goal")?.getAttribute("aria-label")).toBe("Daily word goal: 0 / 1");
     grade();
     expect(stored().dailyProgress?.date).toBe(localDate());
     expect(stored().dailyProgress?.wordIds).toHaveLength(1);

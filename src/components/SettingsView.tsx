@@ -125,7 +125,18 @@ export function SettingsView({
               <option value="MIXED">{t("mixedRecall")}</option>
             </select>
           </label>
-          <p className="form-message">{t("mixedRecallHint")}</p>
+          {s.studyMode !== "SWIPE_ONLY" && <p className="form-message">
+            {t(s.studyMode === "TYPE_ONLY" ? "typeOnlyHint" : "mixedRecallHint")}
+          </p>}
+          <div className="setting-toggle">
+            <div>
+              <label htmlFor="instant-master">{t("instant")}</label>
+              <p>{t("instantHint")}</p>
+            </div>
+            <input id="instant-master" type="checkbox" role="switch"
+              checked={s.instantMasterOnFirstTry}
+              onChange={(e) => changeSettings({ instantMasterOnFirstTry: e.target.checked })} />
+          </div>
           <label>
             {t("dailyGoal")}
             <input
