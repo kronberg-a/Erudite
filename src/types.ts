@@ -59,4 +59,6 @@ export type Mode = "mixed" | "new" | "review";
 export type Action = "know" | "repeat" | "master";
 export type Evaluation = "CORRECT" | "ASSISTED" | "INCORRECT";
 export type TypingInput = "KEYBOARD" | "TILES";
-export type StudySelection = { kind: "word" | "category"; id: string };
+export type StudySelection =
+  | { kind: "word" | "category"; id: string }
+  | { kind: "categories"; ids: string[] };

@@ -18,6 +18,7 @@ export function WordForm({
   existing,
   onClose,
   onPractice,
+  initialCategoryId,
 }: {
   pair: PairData;
   settings: Settings;
@@ -26,6 +27,7 @@ export function WordForm({
   existing?: WordCard;
   onClose?: () => void;
   onPractice?: (selection: StudySelection) => void;
+  initialCategoryId?: string;
 }) {
   const id = useId();
   const [word, setWord] = useState(existing?.targetWord ?? "");
@@ -42,7 +44,7 @@ export function WordForm({
     existing?.examples[0]?.translatedSentence ?? "",
   );
   const [categoryId, setCategoryId] = useState(
-    existing?.categoryIds[0] ?? pair.categories[0]?.id ?? "",
+    existing?.categoryIds[0] ?? initialCategoryId ?? pair.categories[0]?.id ?? "",
   );
   const [newFolder, setNewFolder] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
@@ -205,7 +207,7 @@ export function WordForm({
   };
   return (
     <div className="word-form-wrap">
-      {!existing && (
+      {!existing && !onClose && (
         <div className="page-heading">
           <div>
             <p className="eyebrow">{t("add")}</p>
@@ -221,9 +223,9 @@ export function WordForm({
           save();
         }}
       >
-        {existing && (
+        {(existing || onClose) && (
           <div className="dialog-heading">
-            <h2>{t("edit")}</h2>
+            <h2>{t(existing ? "edit" : "add")}</h2>
             <button
               type="button"
               className="icon-button"

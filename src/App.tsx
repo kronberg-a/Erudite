@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Layers,
   Moon,
-  Plus,
   Settings2,
   ShieldCheck,
   Sun,
@@ -25,10 +24,9 @@ import { seedPair } from "./i18n/seedData";
 import { loadData, pairKey, saveData } from "./services/storage";
 import { StudyView } from "./components/StudyView";
 import { CategoryView } from "./components/CategoryView";
-import { WordForm } from "./components/WordForm";
 import { SettingsView } from "./components/SettingsView";
 import { ReaderView } from "./components/ReaderView";
-type Page = "learn" | "categories" | "reader" | "add" | "settings";
+type Page = "learn" | "categories" | "reader" | "settings";
 const initial = loadData();
 export default function App() {
   const [data, setData] = useState<AppData>(initial.data);
@@ -88,7 +86,6 @@ export default function App() {
     { id: "learn", icon: BookOpen },
     { id: "categories", icon: Layers },
     { id: "reader", icon: BookOpenText },
-    { id: "add", icon: Plus },
     { id: "settings", icon: Settings2 },
   ] as const;
   return (
@@ -218,20 +215,10 @@ export default function App() {
               update={update}
               t={t}
               openLibrary={() => setPage("categories")}
-              changeSettings={changeSettings}
             />
           )}{" "}
           {page === "categories" && (
             <CategoryView
-              pair={pair}
-              settings={s}
-              update={update}
-              t={t}
-              onPractice={practice}
-            />
-          )}{" "}
-          {page === "add" && (
-            <WordForm
               pair={pair}
               settings={s}
               update={update}

@@ -39,11 +39,16 @@ export function CategoryView({
   const [folderName, setFolderName] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WordCard | null>(null);
+  const [adding, setAdding] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const closeDialog = () => {
+    setEditing(null);
+    setAdding(false);
+  };
   useEffect(() => {
-    if (editing) dialog.current?.showModal();
+    if (editing || adding) dialog.current?.showModal();
     else dialog.current?.close();
-  }, [editing]);
+  }, [editing, adding]);
   const filtered = pair.words.filter(
     (w) =>
       (selected === "all" || w.categoryIds.includes(selected)) &&
@@ -64,13 +69,19 @@ export function CategoryView({
           <h1>{t("libraryTitle")}</h1>
           <p className="subtitle">{t("librarySub")}</p>
         </div>
-        <button
-          className="outline-button"
-          onClick={() => setCreating(!creating)}
-        >
-          <Plus size={17} />
-          {t("newFolder")}
-        </button>
+        <div className="library-heading-actions">
+          <button
+            className="outline-button"
+            onClick={() => setCreating(!creating)}
+          >
+            <Plus size={17} />
+            {t("newFolder")}
+          </button>
+          <button className="primary-button" onClick={() => setAdding(true)}>
+            <Plus size={17} />
+            {t("add")}
+          </button>
+        </div>
       </div>
       {creating && (
         <form
@@ -323,22 +334,23 @@ export function CategoryView({
       <dialog
         ref={dialog}
         className="edit-dialog"
-        aria-label={t("edit")}
-        onCancel={() => setEditing(null)}
+        aria-label={t(adding ? "add" : "edit")}
+        onCancel={closeDialog}
         onClick={(e) => {
-          if (e.target === e.currentTarget) setEditing(null);
+          if (e.target === e.currentTarget) closeDialog();
         }}
       >
-        {editing && (
+        {(editing || adding) && (
           <WordForm
-            key={editing.id}
+            key={editing?.id ?? "add"}
             pair={pair}
             settings={settings}
             update={update}
             t={t}
             onPractice={onPractice}
-            existing={editing}
-            onClose={() => setEditing(null)}
+            existing={editing ?? undefined}
+            initialCategoryId={selected === "all" ? undefined : selected}
+            onClose={closeDialog}
           />
         )}
       </dialog>

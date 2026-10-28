@@ -776,6 +776,11 @@ kbd {
   letter-spacing: -1px;
   margin: 10px 0;
 }
+.library-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .subtitle {
   font-size: 12px;
   color: var(--muted);
@@ -1894,7 +1899,7 @@ kbd {
     position: fixed;
     inset: auto 0 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     padding: 10px 8px max(10px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: var(--surface);
@@ -2088,3 +2093,75 @@ kbd {
 .reader-entry p, .reader-entry small { color: var(--muted); font-size: 12px; line-height: 1.7; margin-top: 8px; }
 @media (max-width: 1000px) { .reader-columns { grid-template-columns: 1fr; } }
 @media (max-width: 767px) { .reader-import, .reader-body, .reader-collector { padding: 20px; } .bottom-nav button { min-width: 0; font-size: 9px; } }
+.session-settings {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+.session-mode-options {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 100%;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.session-mode-option {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+.session-mode-option input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+}
+.session-mode-option span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 46px;
+  padding: 13px 14px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+.session-mode-option span::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+}
+.session-mode-option:hover span {
+  background: var(--soft);
+}
+.session-mode-option input:checked + span {
+  background: var(--soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.session-mode-option input:checked + span::after {
+  opacity: 1;
+}
+.session-mode-option input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .session-mode-options { display: grid; width: 100%; }
+  .session-mode-option span { padding: 8px; font-size: 11px; }
+}

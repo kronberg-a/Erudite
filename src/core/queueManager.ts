@@ -12,7 +12,9 @@ export function selectedWords(
 ): WordCard[] {
   if (selection)
     return pair.words.filter((word) =>
-      selection.kind === "word"
+      selection.kind === "categories"
+        ? word.categoryIds.some((id) => selection.ids.includes(id))
+        : selection.kind === "word"
         ? word.id === selection.id
         : word.categoryIds.includes(selection.id),
     );

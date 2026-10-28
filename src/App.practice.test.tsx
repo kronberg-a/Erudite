@@ -16,6 +16,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
   HTMLDialogElement.prototype.close = vi.fn();
+  HTMLDialogElement.prototype.showModal = vi.fn();
   const pair = seedPair("en", "de");
   pair.words = [
     {
@@ -84,6 +85,24 @@ function fill(input: HTMLInputElement, value: string) {
   });
 }
 describe("new and reset word practice", () => {
+  it("requires session setup, respects folder selection, and restores setup after ending", async () => {
+    await renderApp();
+    expect(container.querySelector("article")).toBeNull();
+    expect(container.querySelector(".session-settings h2")).toBeNull();
+    expect(container.querySelectorAll('.session-settings input')).toHaveLength(3);
+    expect(container.querySelector('.session-settings select')).toBeNull();
+    expect(container.querySelector('.session-folders')).toBeNull();
+    act(() => container.querySelector<HTMLInputElement>('input[name="session-mode"][value="new"]')!.click());
+    clickText("Start practice");
+    expect(container.querySelector("article h2")?.textContent).toBe("Older new word");
+    expect(container.querySelector(".session-settings")).toBeNull();
+    clickText("End session");
+    expect(container.querySelector(".session-settings")).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[name="session-mode"]:checked')?.value).toBe("new");
+    expect(container.querySelector("article")).toBeNull();
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    expect(current.pairs["en-de"].categories.every((c) => c.isActiveForStudy)).toBe(true);
+  });
   it("resets mastered words and whole folders directly into the immediately available review pool", async () => {
     await renderApp();
     clickText("Vocabulary");
@@ -122,13 +141,8 @@ describe("new and reset word practice", () => {
       "New words01",
     );
 
-    const select = container.querySelector<HTMLSelectElement>(
-      '[aria-label="Practice selection"]',
-    )!;
-    act(() => {
-      select.value = "category:core";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    clickText("Vocabulary");
+    clickLabel("Practice: Core vocabulary");
     clickText("Start practice");
     expect(container.querySelector("article")?.textContent).toContain(
       "die Zeit",
@@ -136,6 +150,12 @@ describe("new and reset word practice", () => {
   });
   it("starts practice of a just-saved word instead of older seed words without a daily allowance", async () => {
     await renderApp();
+    expect(
+      Array.from(container.querySelectorAll("nav button")).some(
+        (button) => button.textContent?.trim() === "Add word",
+      ),
+    ).toBe(false);
+    clickText("Vocabulary");
     clickText("Add word");
     fill(
       container.querySelector<HTMLInputElement>(
@@ -154,9 +174,21 @@ describe("new and reset word practice", () => {
           new Event("submit", { bubbles: true, cancelable: true }),
         ),
     );
+    expect(container.querySelector(".word-table")?.textContent).toContain("Neu");
+    clickLabel("Close");
+    expect(container.querySelector('[aria-label="Word in the learning language"]')).toBeNull();
+    clickText("Add word");
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Word in the learning language"]')?.value).toBe("");
+    fill(container.querySelector<HTMLInputElement>('[aria-label="Word in the learning language"]')!, "Frisch");
+    const nextTranslation = Array.from(container.querySelectorAll<HTMLInputElement>("input"))
+      .find((el) => el.closest("label")?.textContent?.trim() === "Translation")!;
+    fill(nextTranslation, "Fresh");
+    act(() => container.querySelector("dialog form")!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    ));
     clickText("Practice saved word");
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Neu");
+    expect(container.querySelector("article h2")?.textContent).toBe("Frisch");
     const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
     expect(
       stored.pairs["en-de"].words.find((w) => w.targetWord === "Neu")?.status,

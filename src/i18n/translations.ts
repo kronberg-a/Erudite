@@ -825,6 +825,14 @@ const rows = {
     "Esercitati con la parola salvata",
     "Practicar la palabra guardada",
   ],
+  sessionSettings: [
+    "Session settings",
+    "Настройки сессии",
+    "Sitzungseinstellungen",
+    "Paramètres de la session",
+    "Impostazioni della sessione",
+    "Ajustes de la sesión",
+  ],
   practiceSelection: [
     "Practice selection",
     "Выбор для практики",

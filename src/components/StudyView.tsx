@@ -5,7 +5,6 @@ import {
   ArrowUp,
   BookOpen,
   Check,
-  ChevronDown,
   RotateCcw,
   Volume2,
 } from "lucide-react";
@@ -16,7 +15,6 @@ import type {
   Mode,
   PairData,
   Settings,
-  TypingInput,
   StudySelection,
   WordCard,
 } from "../types";
@@ -42,7 +40,6 @@ interface Props {
   reviewOrder: number;
   t: T;
   openLibrary: () => void;
-  changeSettings: (patch: Partial<Settings>) => void;
   initialSelection?: StudySelection;
 }
 interface Undo {
@@ -61,14 +58,13 @@ export function StudyView({
   update,
   t,
   openLibrary,
-  changeSettings,
   initialSelection,
   reviewOrder,
   dailyProgress,
 }: Props) {
   const [day, setDay] = useState(localDate);
   const [mode, setMode] = useState<Mode>("mixed");
-  const [selection, setSelection] = useState<StudySelection | undefined>(
+  const [selection] = useState<StudySelection | undefined>(
     initialSelection,
   );
   const [queue, setQueue] = useState<string[]>([]);
@@ -81,13 +77,12 @@ export function StudyView({
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
-  const [inputMode, setInputMode] = useState<TypingInput>("KEYBOARD");
   const [turn, setTurn] = useState(0);
   const nextButton = useRef<HTMLButtonElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
   const evaluated = useRef(false);
   const committedTurn = useRef(-1);
-  const available = buildStudyQueue(pair, mode, selection);
+  const available = buildStudyQueue(pair, availableMode(pair, mode, selection), selection);
   const inProgress = buildStudyQueue(pair, "review", selection).length;
   const fresh = buildStudyQueue(pair, "new", selection).length;
   const pool = selectedWords(pair, selection);
@@ -127,7 +122,12 @@ export function StudyView({
   const category =
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
   const start = () => {
-    setQueue(available);
+    const nextMode = availableMode(pair, mode, selection);
+    const nextQueue = buildStudyQueue(pair, nextMode, selection);
+    if (!nextQueue.length) return;
+    setMode(nextMode);
+    setModeNotice(nextMode !== mode);
+    setQueue(nextQueue);
     setStarted(true);
     setCompleted(0);
     setHistory([]);
@@ -233,12 +233,11 @@ export function StudyView({
   const distance = tint === "master" ? -drag.y : Math.abs(drag.x);
   const transform = `translate(${drag.x}px, ${drag.y}px) rotate(${(drag.x / 100) * 8}deg)`;
   const changeMode = (requested: Mode) => {
-    const next = availableMode(pair, requested, selection);
-    setMode(next);
-    setModeNotice(next !== requested);
+    if (started) return;
+    setMode(requested);
+    setModeNotice(false);
     setHistory([]);
     resetTurn();
-    if (started) setQueue(buildStudyQueue(pair, next, selection));
   };
   return (
     <>
@@ -247,96 +246,6 @@ export function StudyView({
           <p className="eyebrow">{t("learn")}</p>
           <h1>{t("study")}</h1>
           <p className="subtitle">{t("studySub")}</p>
-        </div>
-        <div className="study-selectors">
-          <label className="recall-mode-label">
-            {t("practiceSelection")}
-            <select
-              aria-label={t("practiceSelection")}
-              value={selection ? `${selection.kind}:${selection.id}` : "all"}
-              disabled={started && queue.length > 0}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSelection(
-                  value === "all"
-                    ? undefined
-                    : value.startsWith("category:")
-                      ? { kind: "category", id: value.slice(9) }
-                      : { kind: "word", id: value.slice(5) },
-                );
-                setStarted(false);
-                setMode(
-                  availableMode(
-                    pair,
-                    mode,
-                    value === "all"
-                      ? undefined
-                      : value.startsWith("category:")
-                        ? { kind: "category", id: value.slice(9) }
-                        : { kind: "word", id: value.slice(5) },
-                  ),
-                );
-                setModeNotice(false);
-                setQueue([]);
-                setHistory([]);
-                resetTurn();
-              }}
-            >
-              <option value="all">{t("allActiveFolders")}</option>
-              {pair.categories.map((category) => (
-                <option key={category.id} value={`category:${category.id}`}>
-                  {category.name[settings.interfaceLanguage]}
-                </option>
-              ))}
-              {selection?.kind === "word" && (
-                <option value={`word:${selection.id}`}>
-                  {t("selectedWord")}
-                </option>
-              )}
-            </select>
-          </label>
-          <label className="recall-mode-label">
-            {t("studyMode")}
-            <select
-              aria-label={t("studyMode")}
-              value={settings.studyMode}
-              disabled={started && queue.length > 0}
-              onChange={(e) =>
-                changeSettings({
-                  studyMode: e.target.value as Settings["studyMode"],
-                })
-              }
-            >
-              <option value="SWIPE_ONLY">{t("swipeOnly")}</option>
-              <option value="TYPE_ONLY">{t("typeOnly")}</option>
-              <option value="MIXED">{t("mixedRecall")}</option>
-            </select>
-          </label>
-          {settings.studyMode !== "SWIPE_ONLY" && (
-            <label className="recall-mode-label">
-              {t("inputMode")}
-              <select
-                aria-label={t("inputMode")}
-                value={inputMode}
-                onChange={(e) => setInputMode(e.target.value as TypingInput)}
-              >
-                <option value="KEYBOARD">{t("keyboard")}</option>
-                <option value="TILES">{t("tiles")}</option>
-              </select>
-            </label>
-          )}
-          <div className="mode-select">
-            <select
-              aria-label={t("session")}
-              value={mode}
-              onChange={(e) => changeMode(e.target.value as Mode)}
-            >
-              <option value="mixed">{t("mixed")}</option>
-              <option value="new">{t("newMode")}</option>
-              <option value="review">{t("reviewMode")}</option>
-            </select>
-            <ChevronDown size={15} />
-          </div>
         </div>
       </div>
       {selection && (
@@ -365,6 +274,24 @@ export function StudyView({
         </div>
       </div>
       <section className="study-workspace">
+        {!started && (
+          <section className="session-settings" aria-label={t("sessionSettings")}>
+            <div className="session-mode-options" role="radiogroup" aria-label={t("session")}>
+              {(["new", "review", "mixed"] as const).map((option) => (
+                <label key={option} className="session-mode-option">
+                  <input
+                    type="radio"
+                    name="session-mode"
+                    value={option}
+                    checked={mode === option}
+                    onChange={() => changeMode(option)}
+                  />
+                  <span>{t(option === "new" ? "newMode" : option === "review" ? "reviewMode" : "mixed")}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
         {goal != null && (
           <p className="daily-goal-progress">{t("dailyGoal")}: {progress.wordIds.length} / {goal}</p>
         )}
@@ -460,7 +387,7 @@ export function StudyView({
                     key={turn}
                     card={card}
                     settings={settings}
-                    inputMode={inputMode}
+                    inputMode="KEYBOARD"
                     evaluation={evaluation}
                     onEvaluate={evaluate}
                     onListen={() =>
@@ -583,6 +510,15 @@ export function StudyView({
                   ? `${available.length} ${t("remaining")}. ${t("studySub")}`
                   : t("empty")}
             </p>
+            {started && (
+              <button className="outline-button" onClick={() => {
+                setStarted(false);
+                setQueue([]);
+                setHistory([]);
+                setModeNotice(false);
+                resetTurn();
+              }}>{t("restart")}</button>
+            )}
             <button
               className="primary-button"
               onClick={available.length ? start : openLibrary}

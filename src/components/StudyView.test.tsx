@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StudyView } from "./StudyView";
+import { TypingCard } from "./TypingCard";
 import { seedPair } from "../i18n/seedData";
 import { translator } from "../i18n/translations";
 import { defaultSettings } from "../services/storage";
@@ -65,7 +66,7 @@ function input(value: string) {
   });
   return el;
 }
-function setup(patch: Partial<WordCard> = {}) {
+function setup(patch: Partial<WordCard> = {}, mode = "mixed") {
   const seed = seedPair("en", "fr");
   const pair: PairData = {
     ...seed,
@@ -104,11 +105,11 @@ function setup(patch: Partial<WordCard> = {}) {
         }}
         t={translator("en")}
         openLibrary={() => {}}
-        changeSettings={() => {}}
       />
     );
   }
   act(() => root.render(<Harness />));
+  act(() => container.querySelector<HTMLInputElement>(`input[name="session-mode"][value="${mode}"]`)!.click());
   click("Start practice");
   return pair.words[0];
 }
@@ -146,33 +147,25 @@ describe("typing review lifecycle", () => {
       lastReviewedOrder: 2,
     });
   });
-  it("changes modes during practice and automatically continues when the new-only pool is consumed", () => {
-    setup();
-    const select = container.querySelector<HTMLSelectElement>(
-      '[aria-label="STUDY SESSION"]',
-    )!;
-    expect(select.disabled).toBe(false);
-    act(() => {
-      select.value = "new";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+  it("requires setup before starting, hides settings during practice, and continues an exhausted pool", () => {
+    setup({}, "new");
+    expect(container.querySelector(".session-settings")).toBeNull();
+    expect(container.querySelector('select[aria-label="STUDY SESSION"]')).toBeNull();
+    expect(container.querySelector('select[aria-label="Answer input"]')).toBeNull();
     key(input("café"), "Enter");
     click("Next");
-    expect(select.value).toBe("review");
     expect(container.textContent).toContain(
       "Continuing with the remaining words in the other mode.",
     );
-    expect(
-      container.querySelector('[aria-label="Your answer"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[aria-label="Your answer"]')).not.toBeNull();
     click("Undo");
-    expect(select.value).toBe("new");
+    expect(container.querySelector(".session-settings")).toBeNull();
     expect(updates.mock.calls[1][0].words[0]).toMatchObject({
-      status: "NEW",
-      step: 0,
-      repCount: 0,
-      lastReviewedOrder: 0,
+      status: "NEW", step: 0, repCount: 0, lastReviewedOrder: 0,
     });
+    click("End session");
+    expect(container.querySelector(".session-settings")).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[name="session-mode"]:checked')?.value).toBe("new");
   });
   it("hides the answer/audio, masks every occurrence, and waits after correct submission", () => {
     setup();
@@ -280,22 +273,12 @@ describe("typing review lifecycle", () => {
       expect(speak).toHaveBeenCalledTimes(1);
     },
   );
-  it("keeps the hint flag and attempt count when changing input modes", () => {
+  it("keeps input settings unavailable after hints and incorrect attempts", () => {
     setup();
     key(input("wrong"), "Enter");
     key(input("wrong"), "Tab");
-    const select = container.querySelector<HTMLSelectElement>(
-      'select[aria-label="Answer input"]',
-    )!;
-    act(() => {
-      select.value = "TILES";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    expect(container.querySelector('select[aria-label="Answer input"]')).toBeNull();
     expect(container.textContent).toContain("Attempts remaining: 2");
-    act(() => {
-      select.value = "KEYBOARD";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
     key(input("café"), "Enter");
     expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
   });
@@ -327,14 +310,13 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector<HTMLInputElement>("input")?.value).toBe("");
   });
   it("lets letter tiles be selected, returned, and completed with a hint", () => {
-    setup();
-    const select = container.querySelector<HTMLSelectElement>(
-      'select[aria-label="Answer input"]',
-    )!;
-    act(() => {
-      select.value = "TILES";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const seed = seedPair("en", "fr");
+    act(() => root.render(<TypingCard
+      card={{ ...seed.words[0], targetWord: "café", examples: [] }}
+      settings={{ ...defaultSettings, targetLanguage: "fr" }}
+      inputMode="TILES" evaluation={null} onEvaluate={() => {}}
+      onListen={() => {}} audioError={false} t={translator("en")}
+    />));
     const bank = container.querySelector('[aria-label="Available letters"]')!;
     const c = bank.querySelector<HTMLButtonElement>('[aria-label="c"]')!;
     act(() => c.click());

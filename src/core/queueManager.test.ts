@@ -102,6 +102,22 @@ describe("continuous queues", () => {
       advanceQueue(["a"], { ...base, id: "a", status: "MASTERED" }, 50),
     ).toEqual([]);
   });
+  it("combines selected folders without duplicates and excludes unselected folders", () => {
+    const pair = {
+      ...seed,
+      words: [
+        { ...base, id: "shared", categoryIds: ["core", "verbs"] },
+        { ...base, id: "verb", categoryIds: ["verbs"] },
+        { ...base, id: "excluded", categoryIds: ["travel"] },
+      ],
+    };
+    expect(buildStudyQueue(pair, "mixed", {
+      kind: "categories", ids: ["core", "verbs"],
+    })).toEqual(["shared", "verb"]);
+    expect(buildStudyQueue(pair, "mixed", {
+      kind: "categories", ids: [],
+    })).toEqual([]);
+  });
   it("continues immediately when the new-only pool runs out", () => {
     const next = reviewCard(base, "know", settings, 1);
     const result = continueQueue(
