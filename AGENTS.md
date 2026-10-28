@@ -76,11 +76,15 @@ export interface WordCard {
   examples: SentenceExample[];
   categoryIds: string[]; // Folder / Category IDs
   status: WordStatus;
-  step: number; // Consecutive recalls toward mastery, 0 to 5
+  step: number; // Learning sub-step 0–2; REVIEW 3; MASTERED 5
   repCount: number; // Total committed Know/Repeat turns
   lastReviewedOrder: number; // Global relative review-order tick
   createdAt: number;
   lastStudiedAt?: number;
+  interval: number;
+  nextReviewDate: number;
+  easeFactor: number;
+  reviewRepetitions: number;
 }
 
 export interface Category {
@@ -95,7 +99,7 @@ export interface UserSettings {
   interfaceLanguage: SupportedLanguage;
   sourceLanguage: SupportedLanguage;
   targetLanguage: SupportedLanguage;
-  instantMasterOnFirstTry: boolean; // Otherwise start at LEARNING step 1
+  instantMasterOnFirstTry: boolean; // Legacy field, always false and ignored
   studyMode: 'SWIPE_ONLY' | 'TYPE_ONLY' | 'MIXED';
   strictAccents: boolean;
   theme: 'light' | 'dark';
@@ -104,28 +108,25 @@ export interface UserSettings {
 
 ---
 
-## 5. Continuous On-Demand Progression (Current Architecture)
+## 5. Calendar Mastery with Unlimited On-Demand Practice (Current Architecture)
 
-This section supersedes the original calendar-based ReWord scheduling specification. There are no daily caps, future review dates, cooldowns, or time-based eligibility checks. Persist schema version 2 with a global reviewOrder counter; migrate v1 vocabulary and mastery safely. Old repetition totals are unknown and begin at zero on migration. Retain the old storage key as a recovery copy.
+This section supersedes the old continuous five-recall mastery algorithm. Calendar dates govern mastery credit only; they never restrict practice. Persist schema version 3 under `erudite:v3`, retaining v1/v2 storage keys as recovery copies. Migrate earlier NEW/LEARNING progress and repetition totals. Earlier REVIEW/MASTERED words begin REVIEW step 3 with a fresh one-day schedule because old mastery has no calendar evidence.
 
 ### 5.1 Continuous modes
-- All non-mastered words in active categories are available immediately. Explicit word/folder practice scopes the stream without changing inclusion preferences.
-- Mixed continuous interleaves three in-progress words and two NEW words.
-- New-only serves NEW words; review serves LEARNING and REVIEW, sorted by lowest step then oldest lastReviewedOrder.
-- The queue selector stays available during study. If a specific pool runs out while other non-mastered words remain, visibly switch to the remaining mode and continue immediately. Completion is shown only when every selected word is MASTERED; a genuinely empty selection offers vocabulary management.
+- All selected words, including Memorized words, remain available for unlimited practice. Explicit practice scopes the stream without changing category preferences.
+- Mixed mode interleaves three in-progress words and two NEW words. Review includes LEARNING, REVIEW and MASTERED; prioritize due reviews over future practice.
+- When a pool runs out, switch to the remaining mode. Only an actually empty selection offers vocabulary management.
 
-### 5.2 Grading and spacing
-- Every committed Know or Repeat increments repCount and records the next global order tick.
-- NEW + Know: MASTERED step 5 when instant mastery is enabled; otherwise LEARNING step 1, returning after 8 cards.
-- LEARNING + Know: increment step; return after 8 * step cards. At step 3 transition to REVIEW.
-- REVIEW + Know: increment step. Step 4 returns after 50 cards; step 5 becomes MASTERED and leaves the stream.
-- Repeat: LEARNING step 0, returning after 3 cards (within the requested 3–5 range).
-- Assisted correct typing preserves the current learning step and returns after 4 cards.
-- Master: immediately MASTERED step 5. It does not increment the recall total.
-- Short pools reinsert at the end and cycle immediately. Never wait for spacing positions to elapse.
-- Grading and persistence are synchronous. CSS-only 150ms transitions may animate but must not lock input or delay state mutations.
-- Undo restores the exact prior card, queue, mode, repetition total, and global order tick.
-- Individual words and entire folders can reset to NEW step 0 or REVIEW step 3, clearing their repetition counters.
+### 5.2 Grading, scheduling and mastery
+- Every committed Know or Repeat increments repCount and the global review-order tick synchronously. Undo restores the exact prior card, schedule, queue, mode, counters and tick.
+- NEW/LEARNING requires three consecutive unassisted correct recalls. Correct answers advance the learning sub-step; a failure resets to LEARNING step 0 and reinserts after three cards. Short pools cycle immediately.
+- At learning step 3, graduate to REVIEW and schedule the first review in one day. Move the card to the end of the practice queue.
+- Baseline scheduled intervals are 1, 3, 7, 16, 35 and 90 days. Ease starts at 2.3; a failure lowers it by 0.2 to a floor of 1.3. For repetition index r, use round(baseline[r] * (ease / 2.3)^r), at least one day; extend the baseline geometrically beyond 90 days.
+- Only a correct recall on or after nextReviewDate advances the schedule, anchored to the actual recall time. Early correct practice leaves the interval, due date and scheduled repetition count unchanged.
+- A successful scheduled review after an interval of at least 90 days automatically marks the word MASTERED (displayed as Memorized). Scheduling a 90-day interval alone does not grant mastery. No manual mastery, upward gesture/shortcut, or instant-mastery setting is available.
+- Any committed failure, including early practice and Memorized words, resets learning, interval and scheduled success streak. Assisted recalls preserve progress without earning scheduled credit.
+- Individual words/folders can reset to NEW or to REVIEW with a fresh one-day schedule, clearing their practice counters and calendar history.
+- Store interval (days), nextReviewDate (timestamp), easeFactor and reviewRepetitions separately from repCount (all practice).
 
 ### 5.3 Active recall
 Typing mode hides target word, transcription and audio until evaluation. Allow three submitted attempts per turn; only success, the third miss, or explicit Give up reveals the answer. Never commit or advance immediately after typing submission. The revealed card plays audio once and waits for Next, Enter/Space, or a grade override. Retain hints, accent handling, letter tiles, and character differences in all six interface languages.
@@ -157,11 +158,11 @@ Support Pointer Events (`pointerdown`, `pointermove`, `pointerup`, `pointercance
 - **Visual Threshold Feedback:**
   - `deltaX > 0`: Green border tint & "KNOW" indicator badge opacity scales from `0` to `1` as `deltaX` approaches `+100px`.
   - `deltaX < 0`: Red/amber border tint & "REPEAT" indicator badge opacity scales from `0` to `1` as `deltaX` approaches `-100px`.
-  - `deltaY < -40px`: Subtle upward indicator badge ("MASTER") fades in as `deltaY` approaches `-100px`.
+  - Vertical dragging does not grant mastery.
 - **Threshold Triggers:**
   - `deltaX > +100px` (or `ArrowRight`): Fly card off-screen to right + Positive SRS transition.
   - `deltaX < -100px` (or `ArrowLeft`): Fly card off-screen to left + Negative SRS transition + Re-queue.
-  - `deltaY < -100px` (or `ArrowUp`): Fly card off-screen upward + Master transition.
+  - No upward grading gesture or keyboard mastery shortcut.
   - Releasing before threshold: Snap card back to center (`transform: translate(0, 0) rotate(0)` with spring/ease transition).
 
 ### 6.3 Accessible Action Bar
@@ -206,7 +207,7 @@ Directly below the flashcard stack, render clean tactile buttons:
   - Checkbox toggle: Include/exclude category in active study sessions.
 - **Search & Word Management:**
   - Full-text search across all words (target word + translation).
-  - Word detail drawer/modal: Edit word, reset SRS progress back to `NEW`, or toggle `MASTERED`.
+  - Word detail drawer/modal: Edit word, reset SRS progress back to `NEW`, or reset to scheduled REVIEW.
 
 ---
 
@@ -233,7 +234,7 @@ Directly below the flashcard stack, render clean tactile buttons:
   - Persistent left sidebar navigation.
   - Centered flashcard container (`max-w-lg`).
   - Subtle keyboard shortcut labels below the flashcard:
-    `[Space] Reveal` &bull; `[←] Repeat` &bull; `[→] Know` &bull; `[↑] Master` &bull; `[Ctrl+Z] Undo`.
+    `[Space] Reveal` &bull; `[←] Repeat` &bull; `[→] Know` &bull; `[Ctrl+Z] Undo`.
   - Multi-column grid for Category and Word library management.
 
 ---

@@ -31,11 +31,14 @@ export function buildQueue(
   mode: Mode,
 ): string[] {
   const available = selectedWords({ words, categories });
+  const now = Date.now();
   const fresh = available.filter((w) => w.status === "NEW");
   const progress = available
-    .filter((w) => w.status === "LEARNING" || w.status === "REVIEW")
+    .filter((w) => w.status !== "NEW")
     .sort(
-      (a, b) => a.step - b.step || a.lastReviewedOrder - b.lastReviewedOrder,
+      (a, b) => Number((a.nextReviewDate ?? 0) > now) -
+        Number((b.nextReviewDate ?? 0) > now) ||
+      a.step - b.step || a.lastReviewedOrder - b.lastReviewedOrder,
     );
   if (mode === "new") return fresh.map((w) => w.id);
   if (mode === "review") return progress.map((w) => w.id);
@@ -65,8 +68,7 @@ export function advanceQueue(
   distance: number,
 ): string[] {
   const remaining = queue.slice(1).filter((id) => id !== updated.id);
-  if (updated.status !== "MASTERED")
-    remaining.splice(Math.min(distance, remaining.length), 0, updated.id);
+  remaining.splice(Math.min(distance, remaining.length), 0, updated.id);
   return remaining;
 }
 export function continueQueue(
@@ -86,7 +88,7 @@ export function continueQueue(
   next.push(...eligible.filter((id) => !existing.has(id)));
   if (
     next.length ||
-    !selectedWords(pair, selection).some((w) => w.status !== "MASTERED")
+    !selectedWords(pair, selection).length
   )
     return { queue: next, mode, switched: false };
   const fallback = mode === "new" ? "review" : "new";
@@ -102,7 +104,7 @@ export function availableMode(
   selection?: StudySelection,
 ): Mode {
   return buildStudyQueue(pair, mode, selection).length ||
-    !selectedWords(pair, selection).some((w) => w.status !== "MASTERED")
+    !selectedWords(pair, selection).length
     ? mode
     : mode === "new"
       ? "review"

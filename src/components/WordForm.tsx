@@ -154,6 +154,7 @@ export function WordForm({
         id: crypto.randomUUID(),
         status: "NEW",
         step: 0,
+        interval: 0, nextReviewDate: 0, easeFactor: 2.3, reviewRepetitions: 0,
         repCount: 0,
         lastReviewedOrder: 0,
         createdAt: now,

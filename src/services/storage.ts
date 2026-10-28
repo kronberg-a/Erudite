@@ -9,7 +9,8 @@ import type {
 import { languages } from "../types";
 import { seedPair } from "../i18n/seedData";
 import { hydrateDailyProgress } from "../core/dailyGoal";
-const KEY = "erudite:v2";
+import { DAY, emptySchedule } from "../core/srsEngine";
+const KEY = "erudite:v3";
 export const defaultSettings: Settings = {
   interfaceLanguage: "en",
   sourceLanguage: "en",
@@ -35,7 +36,7 @@ type StoredData = {
 };
 const integer = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0;
-function validStored(value: unknown, version: 1 | 2): boolean {
+function validStored(value: unknown, version: 1 | 2 | 3): boolean {
   const d = value as StoredData;
   const s = d?.settings;
   if (
@@ -58,7 +59,7 @@ function validStored(value: unknown, version: 1 | 2): boolean {
   )
     return false;
   if (
-    version === 2 &&
+    version !== 1 &&
     (!integer(d.reviewOrder) ||
       !s.studyMode ||
       typeof s.strictAccents !== "boolean")
@@ -106,6 +107,11 @@ function validStored(value: unknown, version: 1 | 2): boolean {
           ["NEW", "LEARNING", "REVIEW", "MASTERED"].includes(w.status) &&
           Number.isFinite(w.createdAt) &&
           (w.lastStudiedAt === undefined || Number.isFinite(w.lastStudiedAt)) &&
+          (version !== 3 || (
+            [w.interval, w.nextReviewDate, w.easeFactor].every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0) &&
+            w.easeFactor! >= 1.3 && w.easeFactor! <= 2.3 && integer(w.reviewRepetitions) &&
+            (w.status !== "MASTERED" || w.interval! >= 90)
+          )) &&
           integer(w.step) &&
           w.step <= (version === 1 ? 3 : 5) &&
           (version === 1 ||
@@ -114,7 +120,7 @@ function validStored(value: unknown, version: 1 | 2): boolean {
               : w.status === "LEARNING"
                 ? w.step <= 2
                 : w.status === "REVIEW"
-                  ? w.step >= 3 && w.step < 5
+                  ? version === 3 ? w.step === 3 : w.step >= 3 && w.step < 5
                   : w.step === 5)) &&
           (version === 1
             ? [w.interval, w.easeFactor, w.nextReviewDate].every(
@@ -130,7 +136,7 @@ function validStored(value: unknown, version: 1 | 2): boolean {
   });
 }
 export function validateData(value: unknown): value is AppData {
-  if (!validStored(value, 2)) return false;
+  if (!validStored(value, 2) && !validStored(value, 3)) return false;
   try {
     hydrateDailyProgress((value as AppData).dailyProgress);
     return true;
@@ -157,7 +163,7 @@ export function hydrateData(value: unknown): AppData {
     interfaceLanguage: d.settings.interfaceLanguage,
     sourceLanguage: d.settings.sourceLanguage,
     targetLanguage: d.settings.targetLanguage,
-    instantMasterOnFirstTry: d.settings.instantMasterOnFirstTry,
+    instantMasterOnFirstTry: false,
     studyMode: d.settings.studyMode ?? defaultSettings.studyMode,
     strictAccents: d.settings.strictAccents ?? true,
     theme: d.settings.theme,
@@ -175,8 +181,17 @@ export function hydrateData(value: unknown): AppData {
           translations: w.translations,
           examples: w.examples,
           categoryIds: w.categoryIds,
-          status: w.status,
-          step: legacy
+          ...emptySchedule,
+          // Pre-v3 mastery was earned without calendar evidence. Keep its
+          // learning progress, but require scheduled reviews for Memorized.
+          ...(d.version === 3 ? {
+            interval: w.interval!, nextReviewDate: w.nextReviewDate!,
+            easeFactor: w.easeFactor!, reviewRepetitions: w.reviewRepetitions!,
+          } : (w.status === "REVIEW" || w.status === "MASTERED") ? {
+            interval: 1, nextReviewDate: Date.now() + DAY,
+          } : {}),
+          status: d.version !== 3 && w.status === "MASTERED" ? "REVIEW" : w.status,
+          step: d.version !== 3 && (w.status === "REVIEW" || w.status === "MASTERED") ? 3 : legacy
             ? w.status === "MASTERED"
               ? 5
               : w.status === "REVIEW"
@@ -196,7 +211,7 @@ export function hydrateData(value: unknown): AppData {
     ]),
   );
   return {
-    version: 2,
+    version: 3,
     settings,
     pairs,
     reviewOrder: legacy ? studied.length : d.reviewOrder!,
@@ -205,13 +220,13 @@ export function hydrateData(value: unknown): AppData {
 }
 export function loadData(): { data: AppData; error: boolean } {
   const initial: AppData = {
-    version: 2,
+    version: 3,
     reviewOrder: 0,
     settings: defaultSettings,
     pairs: { "en-de": seedPair("en", "de") },
   };
   try {
-    const raw = localStorage.getItem(KEY) ?? localStorage.getItem("erudite:v1");
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem("erudite:v2") ?? localStorage.getItem("erudite:v1");
     return { data: raw ? hydrateData(JSON.parse(raw)) : initial, error: false };
   } catch {
     return { data: initial, error: true };

@@ -15,8 +15,7 @@ export function useSwipeGesture(
     start.current = null;
     setDrag({ x: 0, y: 0, active: false });
     if (cancelled || disabled) return;
-    if (y < -100 && Math.abs(y) > Math.abs(x)) onAction("master");
-    else if (x > 100) onAction("know");
+    if (x > 100) onAction("know");
     else if (x < -100) onAction("repeat");
     else if (Math.abs(x) < 8 && Math.abs(y) < 8) onTap();
   };

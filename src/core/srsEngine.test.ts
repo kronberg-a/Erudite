@@ -1,97 +1,68 @@
 import { describe, expect, it } from "vitest";
-import { reviewCard, reinsertionDistance, resetCard } from "./srsEngine";
+import { reviewCard, reinsertionDistance, resetCard, DAY, reviewInterval } from "./srsEngine";
 import { seedPair } from "../i18n/seedData";
 const base = seedPair("en", "de").words[0];
-const settings = { instantMasterOnFirstTry: false };
-describe("position-based grading", () => {
-  it("advances a new word through five recalls with no dates or waiting", () => {
-    let card = base;
-    const statuses = ["LEARNING", "LEARNING", "REVIEW", "REVIEW", "MASTERED"];
-    for (let step = 1; step <= 5; step++) {
-      card = reviewCard(card, "know", settings, step);
-      expect(card).toMatchObject({
-        step,
-        status: statuses[step - 1],
-        repCount: step,
-        lastReviewedOrder: step,
-      });
+const settings = { instantMasterOnFirstTry: true };
+const grade = (card: typeof base, now: number, action: "know" | "repeat" = "know", assisted = false) =>
+  reviewCard(card, action, settings, card.repCount + 1, { now, assisted });
+function graduate() { let c = base; for (let i = 0; i < 3; i++) c = grade(c, 0); return c; }
+describe("calendar mastery with unlimited practice", () => {
+  it("requires three learning recalls even with the legacy instant setting enabled", () => {
+    let c = base;
+    for (let step = 1; step <= 3; step++) {
+      c = grade(c, 0);
+      expect(c).toMatchObject({ step, repCount: step, status: step === 3 ? "REVIEW" : "LEARNING" });
     }
+    expect(c).toMatchObject({ interval: 1, nextReviewDate: DAY, reviewRepetitions: 0 });
     expect(base.status).toBe("NEW");
-    expect("interval" in card).toBe(false);
-    expect("nextReviewDate" in card).toBe(false);
   });
-  it("supports immediate first-try mastery", () => {
-    expect(
-      reviewCard(base, "know", { instantMasterOnFirstTry: true }, 1),
-    ).toMatchObject({ status: "MASTERED", step: 5, repCount: 1 });
+  it("survives the complete calendar route before becoming Memorized", () => {
+    let c = graduate();
+    for (const interval of [1, 3, 7, 16, 35, 90]) {
+      expect(c.status).toBe("REVIEW");
+      expect(c.interval).toBe(interval);
+      const due = c.nextReviewDate!;
+      c = grade(c, due - 1);
+      expect(c.nextReviewDate).toBe(due);
+      expect(c.interval).toBe(interval);
+      c = grade(c, due);
+    }
+    expect(c).toMatchObject({ status: "MASTERED", reviewRepetitions: 6, step: 5 });
   });
-  it("resets consecutive progress on failure and counts every committed practice", () => {
-    expect(
-      reviewCard(
-        { ...base, status: "REVIEW", step: 4, repCount: 10 },
-        "repeat",
-        settings,
-        30,
-      ),
-    ).toMatchObject({
-      status: "LEARNING",
-      step: 0,
-      repCount: 11,
-      lastReviewedOrder: 30,
-    });
+  it("allows unlimited early practice without advancing or postponing the schedule", () => {
+    let c = graduate();
+    for (let i = 0; i < 500; i++) c = grade(c, DAY - 1);
+    expect(c).toMatchObject({ status: "REVIEW", step: 3, interval: 1,
+      nextReviewDate: DAY, reviewRepetitions: 0, repCount: 503 });
   });
-  it("preserves learning steps on assisted repeats", () => {
-    expect(
-      reviewCard(
-        { ...base, status: "LEARNING", step: 2 },
-        "repeat",
-        settings,
-        2,
-        { assisted: true },
-      ),
-    ).toMatchObject({ status: "LEARNING", step: 2, repCount: 1 });
+  it("resets learning and the scheduled success streak on any failure, including early practice", () => {
+    let c = graduate();
+    c = grade(c, DAY);
+    c = grade(c, DAY + 1, "repeat");
+    expect(c).toMatchObject({ status: "LEARNING", step: 0, interval: 0,
+      nextReviewDate: 0, reviewRepetitions: 0 });
+    expect(c.easeFactor).toBeCloseTo(2.1);
+    expect(reinsertionDistance(c, "repeat")).toBe(3);
   });
-  it("excludes immediately without inventing a recalled answer", () => {
-    expect(reviewCard(base, "master", settings, 1)).toMatchObject({
-      status: "MASTERED",
-      step: 5,
-      repCount: 0,
-      lastReviewedOrder: 1,
-    });
+  it("preserves progress on assisted recalls without granting scheduled credit", () => {
+    const c = graduate();
+    expect(grade(c, DAY, "repeat", true)).toMatchObject({ ...c, repCount: 4, lastReviewedOrder: 4, lastStudiedAt: DAY });
+    expect(reinsertionDistance(c, "repeat", true)).toBe(4);
   });
-  it("uses 8,16,24,50 card spacing and short-loop failures", () => {
-    expect(reinsertionDistance(base, "know")).toBe(8);
-    expect(
-      reinsertionDistance({ ...base, status: "LEARNING", step: 1 }, "know"),
-    ).toBe(16);
-    expect(
-      reinsertionDistance({ ...base, status: "LEARNING", step: 2 }, "know"),
-    ).toBe(24);
-    expect(
-      reinsertionDistance({ ...base, status: "REVIEW", step: 3 }, "know"),
-    ).toBe(50);
-    expect(reinsertionDistance(base, "repeat")).toBe(3);
-    expect(reinsertionDistance(base, "repeat", true)).toBe(4);
+  it("cannot manually master and can continue practising Memorized words", () => {
+    expect(reviewCard(base, "master", settings, 1)).toEqual(base);
+    const c = { ...graduate(), status: "MASTERED" as const, step: 5, interval: 90 };
+    expect(grade(c, 500 * DAY)).toMatchObject({ status: "MASTERED", repCount: 4 });
+    expect(grade(c, 500 * DAY, "repeat")).toMatchObject({ status: "LEARNING", step: 0 });
   });
-  it("resets a word to new or review with clean repetition counters", () => {
-    const mastered = {
-      ...base,
-      status: "MASTERED" as const,
-      step: 5,
-      repCount: 20,
-      lastReviewedOrder: 40,
-    };
-    expect(resetCard(mastered)).toMatchObject({
-      status: "NEW",
-      step: 0,
-      repCount: 0,
-      lastReviewedOrder: 0,
-    });
-    expect(resetCard(mastered, "REVIEW")).toMatchObject({
-      status: "REVIEW",
-      step: 3,
-      repCount: 0,
-      lastReviewedOrder: 0,
-    });
+  it("uses ease and repetition number, and schedules late reviews from the actual recall", () => {
+    expect(reviewInterval(3, 2.3)).toBe(16);
+    expect(reviewInterval(3, 1.3)).toBeLessThan(16);
+    expect(grade(graduate(), 10 * DAY)).toMatchObject({ interval: 3, nextReviewDate: 13 * DAY });
+  });
+  it("clears the full schedule on reset", () => {
+    const c = grade(graduate(), DAY);
+    expect(resetCard(c)).toMatchObject({ status: "NEW", step: 0, interval: 0, nextReviewDate: 0, reviewRepetitions: 0, repCount: 0 });
+    expect(resetCard(c, "REVIEW")).toMatchObject({ status: "REVIEW", step: 3, reviewRepetitions: 0 });
   });
 });

@@ -1,6 +1,8 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  scheduledReview: ["Scheduled review", "Плановое повторение", "Geplante Wiederholung", "Révision prévue", "Ripasso programmato", "Repaso programado"],
+  masteryRoute: ["Practise freely. Memorized requires 3 correct learning recalls, then successful scheduled reviews through a 90-day interval. Early practice does not advance the schedule.", "Практикуйтесь без ограничений. Для запоминания нужны 3 верных ответа, затем плановые повторения до интервала 90 дней. Досрочная практика не ускоряет график.", "Übe beliebig oft. Nach 3 richtigen Lernantworten folgen geplante Wiederholungen bis zu einem Intervall von 90 Tagen. Frühes Üben beschleunigt den Zeitplan nicht.", "Pratiquez librement. Il faut 3 rappels corrects, puis des révisions prévues jusqu’à un intervalle de 90 jours. La pratique anticipée ne fait pas avancer le calendrier.", "Esercitati liberamente. Servono 3 risposte corrette, poi ripassi programmati fino a un intervallo di 90 giorni. La pratica anticipata non accelera il calendario.", "Practica libremente. Se necesitan 3 respuestas correctas y repasos programados hasta un intervalo de 90 días. La práctica anticipada no adelanta el calendario."],
   translationPreview: ["Translation preview", "Предпросмотр перевода", "Übersetzungsvorschau", "Aperçu de la traduction", "Anteprima della traduzione", "Vista previa de traducción"],
   previewTranslation: ["Preview translation", "Перевод для добавления", "Übersetzung zum Hinzufügen", "Traduction à ajouter", "Traduzione da aggiungere", "Traducción para añadir"],
   addToCollection: ["Add to list", "В список", "Zur Liste", "Ajouter à la liste", "Aggiungi alla lista", "Añadir a la lista"],
@@ -131,14 +133,7 @@ const rows = {
     "In corso",
     "En progreso",
   ],
-  mastered: [
-    "Mastered",
-    "Освоено",
-    "Gelernt",
-    "Maîtrisés",
-    "Imparate",
-    "Dominadas",
-  ],
+  mastered: ["Memorized", "Запомнено", "Verinnerlicht", "Mémorisé", "Memorizzato", "Memorizado"],
   total: [
     "Total words",
     "Всего слов",
@@ -850,12 +845,12 @@ const rows = {
     "Todas las carpetas activas",
   ],
   selectedPracticeHint: [
-    "Practice the selected words continuously until mastery.",
-    "Практикуйте выбранные слова непрерывно до освоения.",
-    "Übe die ausgewählten Wörter fortlaufend bis zur Beherrschung.",
-    "Pratiquez les mots sélectionnés en continu jusqu’à la maîtrise.",
-    "Esercitati con le parole selezionate fino alla padronanza.",
-    "Practica las palabras seleccionadas continuamente hasta dominarlas.",
+    "Practise the selected words as often as you like. Scheduled reviews determine memorization.",
+    "Практикуйте выбранные слова без ограничений. Запоминание определяется плановыми повторениями.",
+    "Übe die ausgewählten Wörter beliebig oft. Geplante Wiederholungen bestimmen die Verinnerlichung.",
+    "Pratiquez les mots sélectionnés à volonté. Les révisions prévues déterminent la mémorisation.",
+    "Esercita le parole selezionate liberamente. I ripassi programmati determinano la memorizzazione.",
+    "Practica las palabras seleccionadas libremente. Los repasos programados determinan la memorización.",
   ],
   selectedWord: [
     "Selected word",

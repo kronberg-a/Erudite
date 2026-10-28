@@ -117,34 +117,21 @@ function advanceTime() {
   act(() => vi.advanceTimersByTime(150));
 }
 describe("typing review lifecycle", () => {
-  it("commits immediately, continuously cycles review cards, and stops only at mastery", () => {
+  it("cycles early practice and restores the schedule with undo", () => {
     setup({ status: "LEARNING", step: 2 });
-    for (let step = 3; step <= 5; step++) {
-      key(input("café"), "Enter");
-      click("Next");
-      expect(updates).toHaveBeenCalledTimes(step - 2);
-      expect(updates.mock.calls[step - 3][0].words[0]).toMatchObject({
-        step,
-        repCount: step - 2,
-        lastReviewedOrder: step - 2,
-        status: step === 5 ? "MASTERED" : "REVIEW",
+    for (let i = 0; i < 3; i++) {
+      key(input("café"), "Enter"); click("Next");
+      expect(updates.mock.calls[i][0].words[0]).toMatchObject({
+        step: 3, repCount: i + 1, status: "REVIEW", reviewRepetitions: 0,
       });
-      if (step < 5)
-        expect(
-          container.querySelector('[aria-label="Your answer"]'),
-        ).not.toBeNull();
     }
-    expect(container.querySelector("article")).toBeNull();
-    expect(container.textContent).toContain("All words mastered.");
+    const schedule = updates.mock.calls[0][0].words[0].nextReviewDate;
+    expect(updates.mock.calls[2][0].words[0].nextReviewDate).toBe(schedule);
+    expect(container.querySelector("article")).not.toBeNull();
+    expect(container.querySelector(".master-button")).toBeNull();
     click("Undo");
-    expect(
-      container.querySelector('[aria-label="Your answer"]'),
-    ).not.toBeNull();
     expect(updates.mock.calls[3][0].words[0]).toMatchObject({
-      step: 4,
-      status: "REVIEW",
-      repCount: 2,
-      lastReviewedOrder: 2,
+      step: 3, status: "REVIEW", repCount: 2, nextReviewDate: schedule,
     });
   });
   it("requires setup before starting, hides settings during practice, and continues an exhausted pool", () => {

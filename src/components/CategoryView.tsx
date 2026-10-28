@@ -181,7 +181,7 @@ export function CategoryView({
               <button
                 className="category-practice outline-button"
                 aria-label={`${t("practice")}: ${category.name[settings.interfaceLanguage]}`}
-                disabled={!words.some((word) => word.status !== "MASTERED")}
+                disabled={!words.length}
                 onClick={() =>
                   onPractice({ kind: "category", id: category.id })
                 }
@@ -294,7 +294,6 @@ export function CategoryView({
                   className="icon-button"
                   title={t("practice")}
                   aria-label={`${t("practice")}: ${w.targetWord}`}
-                  disabled={w.status === "MASTERED"}
                   onClick={() => onPractice({ kind: "word", id: w.id })}
                 >
                   <BookOpen size={16} />
@@ -307,20 +306,7 @@ export function CategoryView({
                 >
                   <RotateCcw size={16} />
                 </button>
-                <button
-                  className="icon-button"
-                  title={w.status === "MASTERED" ? t("reset") : t("master")}
-                  aria-label={`${w.status === "MASTERED" ? t("reset") : t("master")}: ${w.targetWord}`}
-                  onClick={() =>
-                    modify(
-                      w.status === "MASTERED"
-                        ? resetCard(w)
-                        : { ...w, status: "MASTERED", step: 5 },
-                    )
-                  }
-                >
-                  <Check size={16} />
-                </button>
+
               </div>
             </div>
           ))

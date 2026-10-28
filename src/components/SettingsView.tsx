@@ -166,21 +166,7 @@ export function SettingsView({
             />
           </div>
           <p id="daily-goal-hint" className="form-message">{t("dailyGoalHint")}</p>
-          <div className="setting-toggle">
-            <div>
-              <label htmlFor="instant-master">{t("instant")}</label>
-              <p>{t("instantHint")}</p>
-            </div>
-            <input
-              id="instant-master"
-              type="checkbox"
-              role="switch"
-              checked={s.instantMasterOnFirstTry}
-              onChange={(e) =>
-                changeSettings({ instantMasterOnFirstTry: e.target.checked })
-              }
-            />
-          </div>
+
         </section>
         <div>
           <section className="panel settings-panel">

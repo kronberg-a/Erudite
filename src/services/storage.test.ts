@@ -6,6 +6,7 @@ import {
   saveData,
   validateData,
 } from "./storage";
+import { reviewCard, DAY } from "../core/srsEngine";
 import { seedPair } from "../i18n/seedData";
 const data = {
   version: 2 as const,
@@ -58,7 +59,7 @@ describe("continuous data and migration", () => {
   it("accepts current data and rejects malformed counters, versions and cards", () => {
     expect(validateData(data)).toBe(true);
     expect(validateData(null)).toBe(false);
-    expect(validateData({ ...data, version: 3 })).toBe(false);
+    expect(validateData({ ...data, version: 4 })).toBe(false);
     expect(validateData({ ...data, reviewOrder: -1 })).toBe(false);
     expect(
       validateData({
@@ -84,29 +85,26 @@ describe("continuous data and migration", () => {
       }),
     ).toBe(false);
   });
-  it("migrates old progress without old calendar locks or invented repetition totals", () => {
+  it("migrates old progress with a fresh calendar schedule or invented repetition totals", () => {
     const migrated = hydrateData(legacyBackup());
     const words = migrated.pairs["en-de"].words;
     expect(validateData(migrated)).toBe(true);
-    expect(words.map((w) => w.step)).toEqual([0, 2, 3, 5]);
+    expect(words.map((w) => w.step)).toEqual([0, 2, 3, 3]);
     expect(words.map((w) => w.status)).toEqual([
       "NEW",
       "LEARNING",
       "REVIEW",
-      "MASTERED",
+      "REVIEW",
     ]);
     expect(words.every((w) => w.repCount === 0)).toBe(true);
     expect(migrated.reviewOrder).toBe(3);
     for (const key of [
-      "interval",
-      "nextReviewDate",
-      "easeFactor",
       "introduced",
       "dailyNewCardsCap",
     ])
       expect(JSON.stringify(migrated)).not.toContain(key);
   });
-  it("loads the v1 key once and saves the migrated v2 dataset without deleting the old backup", () => {
+  it("loads the v1 key once and saves the migrated v3 dataset without deleting the old backup", () => {
     const raw = JSON.stringify(legacyBackup());
     const getItem = vi.fn((key: string) => (key === "erudite:v1" ? raw : null));
     const setItem = vi.fn();
@@ -114,7 +112,7 @@ describe("continuous data and migration", () => {
     const loaded = loadData();
     expect(loaded.error).toBe(false);
     expect(saveData(loaded.data)).toBe(true);
-    expect(setItem.mock.calls[0][0]).toBe("erudite:v2");
+    expect(setItem.mock.calls[0][0]).toBe("erudite:v3");
     expect(setItem).toHaveBeenCalledTimes(1);
   });
   it("preserves global review order on a current backup round trip", () => {
@@ -137,6 +135,37 @@ describe("continuous data and migration", () => {
       },
     });
     expect(hydrateData(JSON.parse(JSON.stringify(current)))).toEqual(current);
+  });
+  it("round trips a scheduled card and rejects invalid calendar fields", () => {
+    let card = data.pairs["en-de"].words[0];
+    for (let i = 1; i <= 3; i++) card = reviewCard(card, "know", defaultSettings, i, { now: 100 });
+    const current = { ...data, version: 3, reviewOrder: 3,
+      pairs: { "en-de": { ...data.pairs["en-de"], words: [card] } } };
+    expect(card.nextReviewDate).toBe(100 + DAY);
+    expect(hydrateData(JSON.parse(JSON.stringify(current)))).toMatchObject(current);
+    for (const invalid of [{ interval: -1 }, { nextReviewDate: "tomorrow" },
+      { easeFactor: 0 }, { reviewRepetitions: 1.5 }, { step: 4 }]) {
+      expect(validateData({ ...current, pairs: { "en-de": {
+        ...current.pairs["en-de"], words: [{ ...card, ...invalid }],
+      } } })).toBe(false);
+    }
+  });
+  it("retains the v2 recovery copy when migrating old mastery", () => {
+    const old = { ...data, pairs: { "en-de": { ...data.pairs["en-de"],
+      words: [{ ...data.pairs["en-de"].words[0], status: "MASTERED", step: 5, repCount: 20 }],
+    } } };
+    const raw = JSON.stringify(old);
+    const getItem = vi.fn((key: string) => key === "erudite:v2" ? raw : null);
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", { getItem, setItem });
+    const loaded = loadData();
+    expect(loaded.error).toBe(false);
+    expect(loaded.data.pairs["en-de"].words[0]).toMatchObject({
+      status: "REVIEW", step: 3, interval: 1, repCount: 20, reviewRepetitions: 0,
+    });
+    saveData(loaded.data);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(setItem.mock.calls[0][0]).toBe("erudite:v3");
   });
   it("rejects corrupt legacy backup imports", () => {
     const bad = legacyBackup();

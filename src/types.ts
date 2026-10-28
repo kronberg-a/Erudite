@@ -22,6 +22,10 @@ export interface WordCard {
   lastReviewedOrder: number;
   createdAt: number;
   lastStudiedAt?: number;
+  interval?: number;
+  nextReviewDate?: number;
+  easeFactor?: number;
+  reviewRepetitions?: number;
 }
 export interface Category {
   id: string;
@@ -49,7 +53,7 @@ export interface PairData {
   categories: Category[];
 }
 export interface AppData {
-  version: 2;
+  version: 2 | 3;
   reviewOrder: number;
   dailyProgress?: DailyProgress;
   settings: Settings;

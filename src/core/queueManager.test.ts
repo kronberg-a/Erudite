@@ -100,7 +100,7 @@ describe("continuous queues", () => {
     ).toEqual(["a"]);
     expect(
       advanceQueue(["a"], { ...base, id: "a", status: "MASTERED" }, 50),
-    ).toEqual([]);
+    ).toEqual(["a"]);
   });
   it("combines selected folders without duplicates and excludes unselected folders", () => {
     const pair = {
@@ -134,32 +134,21 @@ describe("continuous queues", () => {
     });
     expect(availableMode({ ...seed, words: [base] }, "review")).toBe("new");
   });
-  it("never exhausts a mixed stream before all selected words are mastered", () => {
-    let pair = { ...seed };
-    let queue = buildStudyQueue(pair, "mixed");
-    let tick = 0;
-    while (pair.words.some((w) => w.status !== "MASTERED")) {
-      expect(queue.length).toBeGreaterThan(0);
-      expect(++tick).toBeLessThan(200);
-      const card = pair.words.find((w) => w.id === queue[0])!;
-      const updated = reviewCard(card, "know", settings, tick);
-      pair = {
-        ...pair,
-        words: pair.words.map((w) => (w.id === updated.id ? updated : w)),
-      };
-      queue = continueQueue(
-        queue,
-        pair,
-        "mixed",
-        updated,
-        reinsertionDistance(card, "know"),
-      ).queue;
+  it("keeps reviewing freely without granting early mastery", () => {
+    let pair = { ...seed, words: [base] };
+    let queue = [base.id];
+    for (let tick = 1; tick <= 100; tick++) {
+      const card = pair.words[0];
+      const updated = reviewCard(card, "know", settings, tick, { now: 0 });
+      pair = { ...pair, words: [updated] };
+      queue = continueQueue(queue, pair, "mixed", updated, reinsertionDistance(card, "know")).queue;
+      expect(queue).toEqual([base.id]);
     }
-    expect(tick).toBe(160);
-    expect(queue).toEqual([]);
-    expect(pair.words.every((w) => w.step === 5 && w.repCount === 5)).toBe(
-      true,
-    );
+    expect(pair.words[0]).toMatchObject({ status: "REVIEW", repCount: 100, reviewRepetitions: 0 });
+    const memorized = { ...pair.words[0], status: "MASTERED" as const, step: 5 };
+    const memorizedPair = { ...pair, words: [memorized] };
+    expect(buildStudyQueue(memorizedPair, "review")).toEqual([base.id]);
+    expect(availableMode(memorizedPair, "new")).toBe("review");
   });
   it("supports endless failed drilling without date or cooldown checks", () => {
     let pair = {

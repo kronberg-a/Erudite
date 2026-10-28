@@ -24,7 +24,7 @@ beforeEach(() => {
       id: "reset",
       targetWord: "Reset me",
       categoryIds: ["core"],
-      status: "MASTERED",
+      status: "MASTERED", interval: 90, reviewRepetitions: 6,
       step: 5,
     },
     {
@@ -42,12 +42,12 @@ beforeEach(() => {
     },
   ];
   const data: AppData = {
-    version: 2,
+    version: 3,
     reviewOrder: 0,
     settings: { ...defaultSettings },
     pairs: { "en-de": pair },
   };
-  localStorage.setItem("erudite:v2", JSON.stringify(data));
+  localStorage.setItem("erudite:v3", JSON.stringify(data));
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -100,7 +100,7 @@ describe("new and reset word practice", () => {
     expect(container.querySelector(".session-settings")).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[name="session-mode"]:checked')?.value).toBe("new");
     expect(container.querySelector("article")).toBeNull();
-    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(current.pairs["en-de"].categories.every((c) => c.isActiveForStudy)).toBe(true);
   });
   it("resets mastered words and whole folders directly into the immediately available review pool", async () => {
@@ -108,7 +108,7 @@ describe("new and reset word practice", () => {
     clickText("Vocabulary");
     clickLabel("Reset to review: Reset me");
     clickText("Reset to review");
-    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
       current.pairs["en-de"].words.every(
         (word) =>
@@ -120,9 +120,9 @@ describe("new and reset word practice", () => {
     expect(container.querySelector("article")).not.toBeNull();
   });
   it("does not expose the selected word in the typing-mode header", async () => {
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     stored.settings.studyMode = "TYPE_ONLY";
-    localStorage.setItem("erudite:v2", JSON.stringify(stored));
+    localStorage.setItem("erudite:v3", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
     clickLabel("Reset progress: Reset me");
@@ -189,22 +189,22 @@ describe("new and reset word practice", () => {
     clickText("Practice saved word");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("Frisch");
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
       stored.pairs["en-de"].words.find((w) => w.targetWord === "Neu")?.status,
     ).toBe("NEW");
   });
   it("makes reset words directly selectable, including from an excluded folder, without clearing unrelated progress", async () => {
-    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     stored.pairs["en-de"].categories[0].isActiveForStudy = false;
-    localStorage.setItem("erudite:v2", JSON.stringify(stored));
+    localStorage.setItem("erudite:v3", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
     clickLabel("Reset progress: Reset me");
     clickLabel("Practice: Reset me");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
-    const current: AppData = JSON.parse(localStorage.getItem("erudite:v2")!);
+    const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
       current.pairs["en-de"].words.find((w) => w.id === "reset"),
     ).toMatchObject({ status: "NEW", repCount: 0, lastReviewedOrder: 0 });

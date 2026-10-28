@@ -25,15 +25,7 @@ for (const file of await walk("src")) {
     failures++;
   }
 }
-for (const file of ["src/core/srsEngine.ts", "src/core/queueManager.ts"]) {
-  if (
-    /\bDate\b|\bsetTimeout\b|\bsetInterval\b/.test(await readFile(file, "utf8"))
-  ) {
-    console.error(`Time-based scheduling in ${file}`);
-    failures++;
-  }
-}
 if (failures) process.exit(1);
 console.log(
-  "Source constraints passed: no emoji, notification APIs, or time-based study scheduling.",
+  "Source constraints passed: no emoji, notification APIs, or forbidden browser APIs.",
 );

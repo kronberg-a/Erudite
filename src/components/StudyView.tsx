@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUp,
   BookOpen,
   Check,
   RotateCcw,
@@ -87,7 +86,7 @@ export function StudyView({
   const fresh = buildStudyQueue(pair, "new", selection).length;
   const pool = selectedWords(pair, selection);
   const mastered = pool.filter((w) => w.status === "MASTERED").length;
-  const allMastered = pool.length > 0 && mastered === pool.length;
+  const allMastered = pool.length > 0 && mastered === pool.length && !available.length;
   const card = pair.words.find((w) => w.id === queue[0]);
   const typing = !!card && needsTyping(card, settings.studyMode);
   const progress = todayProgress(dailyProgress);
@@ -135,12 +134,12 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
+    if (a === "master" || !started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
       return;
     committedTurn.current = turn;
     setLastAction(a);
     setReverse(false);
-    const assisted = typing && evaluation === "ASSISTED" && a === "repeat";
+    const assisted = typing && evaluation === "ASSISTED";
     const updated = reviewCard(card, a, settings, reviewOrder + 1, {
       assisted,
     });
@@ -224,13 +223,8 @@ export function StudyView({
     reveal,
     typing && !revealed,
   );
-  const tint =
-    drag.y < -40 && Math.abs(drag.y) > Math.abs(drag.x)
-      ? "master"
-      : drag.x > 0
-        ? "know"
-        : "repeat";
-  const distance = tint === "master" ? -drag.y : Math.abs(drag.x);
+  const tint = drag.x > 0 ? "know" : "repeat";
+  const distance = Math.abs(drag.x);
   const transform = `translate(${drag.x}px, ${drag.y}px) rotate(${(drag.x / 100) * 8}deg)`;
   const changeMode = (requested: Mode) => {
     if (started) return;
@@ -245,7 +239,7 @@ export function StudyView({
         <div>
           <p className="eyebrow">{t("learn")}</p>
           <h1>{t("study")}</h1>
-          <p className="subtitle">{t("studySub")}</p>
+          <p className="subtitle">{t("masteryRoute")}</p>
         </div>
       </div>
       {selection && (
@@ -368,9 +362,10 @@ export function StudyView({
                         ? "new"
                         : card.status === "LEARNING"
                           ? "learning"
-                          : "review",
+                          : card.status === "MASTERED" ? "mastered" : "review",
                     )}
-                    {card.status !== "NEW" ? ` ${card.step}/5` : ""}
+                    {card.status === "LEARNING" ? ` ${card.step}/3` : ""}
+                    {card.status === "REVIEW" && card.nextReviewDate ? ` · ${t("scheduledReview")}: ${new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}` : ""}
                   </span>
                 </div>
                 <span
@@ -487,15 +482,6 @@ export function StudyView({
                 </button>
               </div>
             )}
-            {(!typing || revealed) && (
-              <button
-                className="master-button"
-                onClick={() => action("master")}
-              >
-                <ArrowUp size={14} />
-                {t("master")}
-              </button>
-            )}
           </>
         ) : (
           <div className="session-empty">
@@ -546,9 +532,6 @@ export function StudyView({
             </span>
             <span>
               <kbd>→</kbd> {t("know")}
-            </span>
-            <span>
-              <kbd>↑</kbd> {t("master")}
             </span>
             <span>
               <kbd>Ctrl Z</kbd> {t("undo")}
