@@ -51,6 +51,7 @@ function validStored(value: unknown, version: 1 | 2 | 3): boolean {
     (s.studyMode !== undefined &&
       !["SWIPE_ONLY", "TYPE_ONLY", "MIXED"].includes(s.studyMode)) ||
     (s.strictAccents !== undefined && typeof s.strictAccents !== "boolean") ||
+    (s.geminiApiKey !== undefined && (typeof s.geminiApiKey !== "string" || s.geminiApiKey.length > 512 || /[\r\n]/u.test(s.geminiApiKey))) ||
     (s.dailyWordGoal !== undefined && s.dailyWordGoal !== null &&
       (!integer(s.dailyWordGoal) || s.dailyWordGoal < 1 || s.dailyWordGoal > 50)) ||
     !d.pairs ||
@@ -167,6 +168,7 @@ export function hydrateData(value: unknown): AppData {
     strictAccents: d.settings.strictAccents ?? true,
     theme: d.settings.theme,
     dailyWordGoal: d.settings.dailyWordGoal ?? null,
+    geminiApiKey: d.settings.geminiApiKey?.trim() || undefined,
   };
   const pairs: Record<string, PairData> = Object.fromEntries(
     Object.entries(d.pairs).map(([key, p]) => [

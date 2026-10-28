@@ -4,6 +4,31 @@ import { seedPair } from "../i18n/seedData";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("article text and collection", () => {
+  it.each([
+    ["Tür", "Tür", "Sing", "die Tür"], ["Bahnhof", "Bahnhof", "Sing", "der Bahnhof"],
+    ["Hauses", "Haus", "Sing", "das Haus"], ["Straße", "Strasse", "Sing", "die Straße"],
+    ["Smartphones", "unknown", "Plur", "das Smartphone"], ["Bücher", "Bücher", "Plur", "das Buch"],
+    ["Wälder", "Wälder", "Plur", "der Wald"], ["Äpfel", "Äpfel", "Plur", "der Apfel"],
+    ["Vögel", "Vögel", "Plur", "der Vogel"], ["Mäntel", "Mäntel", "Plur", "der Mantel"],
+    ["Gärten", "Gärten", "Plur", "der Garten"], ["Mütter", "Mütter", "Plur", "die Mutter"],
+    ["Väter", "Väter", "Plur", "der Vater"], ["Brüder", "Brüder", "Plur", "der Bruder"],
+    ["Schlösser", "Schlösser", "Plur", "das Schloss"], ["Gläser", "Gläser", "Plur", "das Glas"],
+    ["Gräber", "Gräber", "Plur", "das Grab"], ["Nächte", "Nächte", "Plur", "die Nacht"],
+    ["Söhne", "Söhne", "Plur", "der Sohn"], ["Füße", "Füsse", "Plur", "der Fuß"],
+    ["Reichtümer", "Reichtümer", "Plur", "der Reichtum"], ["Herzen", "Herzen", "Plur", "das Herz"],
+    ["Haustür", "Haustür", "Sing", "die Haustür"], ["Informationssystem", "Informationssystem", "Sing", "das Informationssystem"],
+    ["Quarzblupp", "Quarzblupp", "Sing", "der Quarzblupp"],
+  ])("normalizes German singular/plural nouns with missing gender: %s", (form, lemma, number, expected) => {
+    const row = `1\t${form}\t${lemma}\tNOUN\t_\tNumber=${number}\t0\troot\t_\tTokenRange=0:${form.length}`;
+    expect(parseConlluCanonical(row, form, "de", 0)).toBe(expected);
+  });
+  it.each([["See", "Masc", "der See"], ["See", "Fem", "die See"], ["Band", "Masc", "der Band"], ["Band", "Neut", "das Band"], ["Band", "Fem", "die Band"]])("respects contextual grammatical gender for %s", (word, gender, expected) => {
+    expect(parseConlluCanonical(`1\t${word}\t${word}\tNOUN\t_\tGender=${gender}|Number=Sing\t0\troot\t_\tTokenRange=0:${word.length}`, word, "de", 0)).toBe(expected);
+  });
+  it.each([["zur", "Fem", "die Quarzblupp"], ["ins", "Neut", "das Quarzblupp"], ["dem", "Masc,Neut", "der Quarzblupp"]])("uses attached determiner/preposition clues: %s", (form, gender, expected) => {
+    const conllu = [`1\t${form}\t${form}\tADP\t_\tGender=${gender}\t2\tcase\t_\t_`, "2\tQuarzblupp\tQuarzblupp\tNOUN\t_\tNumber=Sing\t0\troot\t_\t_"].join("\n");
+    expect(parseConlluCanonical(conllu, "Quarzblupp", "de")).toBe(expected);
+  });
   it("preserves Cyrillic, combining marks, umlauts, accents, hyphens and apostrophes", () => {
     const text = "Привет, Straße! élève niño l’amour mother-in-law.";
     const parts = wordParts(text);

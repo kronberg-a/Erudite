@@ -1,5 +1,6 @@
 import type { Language } from "../types";
 import { seedPair } from "../i18n/seedData";
+import { isGeminiConfigured, translateWithGemini } from "./gemini";
 
 const ENTITIES: Record<string, string> = {
   "&amp;": "&",
@@ -126,6 +127,10 @@ export async function translate(
 ): Promise<{ primary: string; alternatives: string[]; offline?: boolean }> {
   const query = text.trim();
   if (!query) throw new Error("Empty translation");
+  if (isGeminiConfigured()) {
+    const gemini = await translateWithGemini(query, from, to, signal);
+    if (gemini) return gemini;
+  }
   try {
     const url = new URL("https://translate.googleapis.com/translate_a/single");
     url.searchParams.set("client", "gtx");

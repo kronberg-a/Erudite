@@ -40,6 +40,14 @@ function legacyBackup() {
   };
 }
 describe("continuous data and migration", () => {
+  it("hydrates optional Gemini keys and rejects malformed key values", () => {
+    const backup = { ...data, settings: { ...defaultSettings, geminiApiKey: "  test-key  " } };
+    expect(hydrateData(backup).settings.geminiApiKey).toBe("test-key");
+    expect(hydrateData(data).settings.geminiApiKey).toBeUndefined();
+    for (const geminiApiKey of [42, "x".repeat(513), "key\nheader"]) {
+      expect(validateData({ ...data, settings: { ...defaultSettings, geminiApiKey } })).toBe(false);
+    }
+  });
   it("round trips recovered ease, manual mastery, and the enabled instant setting", () => {
     const base = data.pairs["en-de"].words[0];
     const mastered = reviewCard(base, "master", defaultSettings, 1);

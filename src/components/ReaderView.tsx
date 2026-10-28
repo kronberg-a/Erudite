@@ -3,8 +3,12 @@ import { ArrowRight, BookOpenText, Languages, ListChecks, Plus, X } from "lucide
 import type { PairData, Settings, StudySelection } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
-import { canonicalizeWord, collectArticleWords, importArticle, selectContextualTranslation, sentenceAt, sentenceContextAt, wordKey, wordParts } from "../services/article";
+import { analyzeContextualSelection, canonicalizeWordFallback, collectArticleWords, importArticle, selectContextualTranslation, sentenceAt, sentenceContextAt, wordKey, wordParts } from "../services/article";
 import type { Article, CollectedWord } from "../services/article";
+import { analyzeArticleCefr, CEFR_LEVELS } from "../services/cefr";
+import type { CefrLevel } from "../services/cefr";
+import { clearGeminiBackoff, isGeminiConfigured } from "../services/gemini";
+import { GeminiAnalysisError } from "../services/geminiProtocol";
 
 interface PickedWord { word: string; offset: number }
 interface Entry extends CollectedWord { key: string; offset: number; sentenceOffset?: number; sourceWord?: string; group?: boolean; picked?: PickedWord[]; state: "pending" | "ready" | "error" }
@@ -25,6 +29,12 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
   const [limit, setLimit] = useState(false);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<PickedWord[]>([]);
+  const [activeLevels, setActiveLevels] = useState<CefrLevel[]>([]);
+  const [cefrAnalysis, setCefrAnalysis] = useState<{
+    text: string; language: Settings["targetLanguage"]; apiKey?: string;
+    state: "loading" | "ready" | "error"; levels?: Map<number, CefrLevel>; issue?: "response" | "timeout";
+  } | null>(null);
+  const [cefrRetry, setCefrRetry] = useState(0);
   const pendingClick = useRef<{ timer: ReturnType<typeof setTimeout>; word: string; offset: number } | null>(null);
   const lastTap = useRef<{ offset: number; time: number } | null>(null);
   const previewRequest = useRef<AbortController | null>(null);
@@ -66,11 +76,12 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     const controller = new AbortController();
     previewRequest.current = controller;
     setPreview({ ...entry, state: "pending" });
+    const fallback = () => {
     const canCanonicalize =
       !!entry.sentence &&
       (!("mock" in translate) || (typeof fetch === "function" && "mock" in fetch));
     const canonicalPromise = canCanonicalize
-      ? canonicalizeWord(
+      ? canonicalizeWordFallback(
           entry.sourceWord ?? entry.word,
           entry.sentence,
           settings.targetLanguage,
@@ -154,12 +165,51 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
       }).catch(() => {
         if (!controller.signal.aborted) setPreview({ ...entry, state: "error" });
       });
+    };
+    if (!isGeminiConfigured(settings.geminiApiKey)) { fallback(); return; }
+    void analyzeContextualSelection({
+      word: entry.sourceWord ?? entry.word, sentence: entry.sentence, wordOffset: entry.sentenceOffset,
+      from: settings.targetLanguage, to: settings.sourceLanguage,
+    }, controller.signal, settings.geminiApiKey).then((result) => {
+      if (controller.signal.aborted) return;
+      if (!result) { fallback(); return; }
+      setPreview({ ...entry, key: wordKey(result.canonicalWord, settings.targetLanguage),
+        word: result.canonicalWord, sourceWord: entry.sourceWord ?? entry.word,
+        translation: result.translation, translatedSentence: result.translatedSentence, state: "ready" });
+    }).catch(() => { if (!controller.signal.aborted) fallback(); });
   };
   const load = (next: Article) => {
     cancelPicking();
     closePreview();
+    setCefrAnalysis(null);
     setArticle(next); setFolder(next.title.slice(0, 80)); setEntries([]);
     setSavedFolder(null); setLimit(false); setError(false);
+  };
+  const cefrEnabled = activeLevels.length > 0;
+  const cefrMatches = cefrAnalysis?.text === article?.text && cefrAnalysis?.language === settings.targetLanguage && cefrAnalysis?.apiKey === settings.geminiApiKey;
+  useEffect(() => {
+    if (!article || !cefrEnabled || (cefrMatches && cefrAnalysis?.state === "ready")) return;
+    const controller = new AbortController();
+    const context = { text: article.text, language: settings.targetLanguage, apiKey: settings.geminiApiKey };
+    setCefrAnalysis({ ...context, state: "loading" });
+    void analyzeArticleCefr(article.text, settings.targetLanguage, controller.signal, settings.geminiApiKey)
+      .then((map) => {
+        if (!controller.signal.aborted) setCefrAnalysis({ ...context, state: "ready", levels: map });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setCefrAnalysis({ ...context, state: "error", issue: error instanceof GeminiAnalysisError ? error.kind : undefined });
+      });
+    return () => controller.abort();
+    // Completion updates state without restarting its own request. Filtering
+    // returned levels does not require another Gemini analysis.
+  }, [article, settings.targetLanguage, settings.geminiApiKey, cefrEnabled, cefrRetry]);
+  const cefrMap = cefrMatches && cefrAnalysis?.state === "ready" ? cefrAnalysis.levels : undefined;
+  const toggleLevel = (level: CefrLevel) => {
+    setActiveLevels((prev) => (prev.includes(level) ? prev.filter((item) => item !== level) : [...prev, level]));
+  };
+  const allLevelsActive = activeLevels.length === CEFR_LEVELS.length;
+  const toggleAllLevels = () => {
+    setActiveLevels(allLevelsActive ? [] : [...CEFR_LEVELS]);
   };
   const importUrl = async () => {
     importing.current?.abort();
@@ -277,20 +327,60 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
       </details>
     </section>
     {article && <div className="reader-columns">
-      <article ref={body} className={`panel reader-body${picking ? " reader-picking" : ""}`} lang={article.language || settings.targetLanguage} onPointerUp={captureSelection} onKeyUp={(e) => { if (e.shiftKey) captureSelection(); }}>
-        <div className="reader-article-heading"><h2>{article.title}</h2><button type="button" className="outline-button reader-select-button" aria-pressed={picking} onClick={() => picking ? cancelPicking() : startPicking()}><ListChecks size={16} />{t("pickWords")}</button></div>
-        {paragraphs?.map(({ text, start }) => {
-          let position = start;
-          return <p key={start} data-offset={start}>{wordParts(text).map((part, i) => {
-            const at = position; position += part.length;
-            return i % 2 === 1 ? <button type="button" key={i} className="reader-word" data-offset={at} data-picked={picking && picked.some((word) => word.offset === at)} aria-pressed={picking ? picked.some((word) => word.offset === at) : entries.some((row) => row.key === wordKey(part, settings.targetLanguage) || (!row.group && row.offset === at))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
-              event.preventDefault();
-              // Touch browsers may emit dblclick after the second click already started selection.
-              if (!picking) startPicking([{ word: part, offset: at }]);
-            }}>{part}</button> : part;
-          })}</p>;
-        })}
-      </article>
+      <div className="reader-article-column">
+        <section className="panel reader-level-panel" aria-label={t("cefrFilter")}>
+          <div className="reader-level-header">
+            <p className="eyebrow">{t("cefrFilter")}</p>
+            <p className="subtitle">{t("cefrFilterSub")}</p>
+          </div>
+          <div className="reader-level-controls">
+            {CEFR_LEVELS.map((level) => (
+              <button
+                type="button"
+                key={level}
+                className="cefr-level-button"
+                data-level={level}
+                aria-pressed={activeLevels.includes(level)}
+                onClick={() => toggleLevel(level)}
+              >
+                <span className={`stat-dot cefr-dot-${level.toLowerCase()}`} aria-hidden="true" />
+                {level}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="outline-button cefr-all-button"
+              aria-pressed={allLevelsActive}
+              onClick={toggleAllLevels}
+            >
+              {t("allLevels")}
+            </button>
+          </div>
+          {cefrEnabled && <div className="reader-cefr-status" role="status" aria-live="polite">
+            <p className="form-message">{t(cefrMatches && cefrAnalysis?.state === "error"
+              ? cefrAnalysis.issue === "response" ? "cefrGeminiResponseError" : cefrAnalysis.issue === "timeout" ? "cefrGeminiTimeout" : "cefrGeminiUnavailable"
+              : cefrMatches && cefrAnalysis?.state === "ready" ? "cefrGeminiReady" : "cefrGeminiLoading")}</p>
+            {cefrMatches && cefrAnalysis?.state === "error" && <button type="button" className="text-button" onClick={() => { clearGeminiBackoff(); setCefrRetry((value) => value + 1); }}>{t("cefrRetry")}</button>}
+          </div>}
+        </section>
+        <article ref={body} className={`panel reader-body${picking ? " reader-picking" : ""}`} lang={article.language || settings.targetLanguage} onPointerUp={captureSelection} onKeyUp={(e) => { if (e.shiftKey) captureSelection(); }}>
+          <div className="reader-article-heading"><h2>{article.title}</h2><button type="button" className="outline-button reader-select-button" aria-pressed={picking} onClick={() => picking ? cancelPicking() : startPicking()}><ListChecks size={16} />{t("pickWords")}</button></div>
+          {paragraphs?.map(({ text, start }) => {
+            let position = start;
+            return <p key={start} data-offset={start}>{wordParts(text).map((part, i) => {
+              const at = position; position += part.length;
+              if (i % 2 !== 1) return part;
+              const wordLevel = cefrMap?.get(at);
+              const highlightedLevel = wordLevel && activeLevels.includes(wordLevel) ? wordLevel : undefined;
+              return <button type="button" key={i} className="reader-word" data-offset={at} data-cefr={highlightedLevel} data-picked={picking && picked.some((word) => word.offset === at)} aria-pressed={picking ? picked.some((word) => word.offset === at) : entries.some((row) => row.key === wordKey(part, settings.targetLanguage) || (!row.group && row.offset === at))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
+                event.preventDefault();
+                // Touch browsers may emit dblclick after the second click already started selection.
+                if (!picking) startPicking([{ word: part, offset: at }]);
+              }}>{part}</button>;
+            })}</p>;
+          })}
+        </article>
+      </div>
       {picking && <div className="reader-selection-bar" role="region" aria-label={t("pickWords")}>
         <div className="reader-selection-preview" aria-live="polite"><span title={selectionText} lang={selectionText ? settings.targetLanguage : settings.interfaceLanguage}>{selectionText || t("pickWords")}</span><small>{selectionText.length > 2000 ? t("selectionTooLong") : limit ? t("collectionLimit") : `${picked.length} · ${t("pickWordsHint")}`}</small></div>
         <button type="button" className="icon-button" aria-label={t("translateSelection")} title={t("translateSelection")} disabled={!picked.length || selectionText.length > 2000} onClick={finishPicking}><Languages size={20} /></button>

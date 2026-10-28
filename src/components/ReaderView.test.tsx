@@ -8,6 +8,7 @@ import { translate } from "../services/translator";
 import { defaultSettings } from "../services/storage";
 import { translator } from "../i18n/translations";
 import type { PairData } from "../types";
+import { configureGemini } from "../services/gemini";
 vi.mock("../services/translator", () => ({ translate: vi.fn() }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
@@ -16,6 +17,8 @@ let pair: PairData;
 const update = vi.fn();
 const practice = vi.fn();
 beforeEach(() => {
+  configureGemini("reset-reader-test-state");
+  configureGemini();
   vi.resetAllMocks();
   pair = { words: [], categories: [] };
   container = document.createElement("div"); document.body.append(container);
@@ -23,7 +26,7 @@ beforeEach(() => {
   window.getSelection()?.removeAllRanges();
   act(() => root.render(<ReaderView pair={pair} settings={defaultSettings} update={update} onPractice={practice} t={translator("en")} />));
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { act(() => root.unmount()); container.remove(); configureGemini(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 function click(text: string) {
   const button = Array.from(container.querySelectorAll("button")).find((node) => node.textContent?.trim() === text);
   if (!button) throw new Error(`Missing button ${text}`);
@@ -42,6 +45,105 @@ function paste(text = "Hallo Welt. Eine neue Sprache.") {
   const form = container.querySelector("details form")!;
   act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 }
+it("uses one contextual Gemini request for a normalized popup and its saved sentence", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    partOfSpeech: "NOUN", canonicalWord: "die Tür", translation: "door", alternatives: [],
+    translatedSentence: "She opens the door.", cefrLevel: "A1",
+  }) });
+  vi.stubGlobal("fetch", fetchMock);
+  paste("Sie öffnet die Tür.");
+  await act(async () => click("Tür"));
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("die Tür");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(translate).not.toHaveBeenCalled();
+  const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+  expect(body).toMatchObject({ operation: "selection", input: { word: "Tür", sentence: "Sie öffnet die Tür.", wordOffset: 15, from: "de", to: "en" } });
+  click("Add to list"); click("Save collected words");
+  expect(update.mock.calls[0][0].words[0]).toMatchObject({ targetWord: "die Tür", translations: ["door"], examples: [{ targetSentence: "Sie öffnet die Tür.", translatedSentence: "She opens the door." }] });
+});
+it("ignores an aborted Gemini response when the selection changes", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  let finish!: (value: unknown) => void;
+  const response = (word: string) => ({ ok: true, json: async () => ({ partOfSpeech: "OTHER", canonicalWord: word, translation: word === "Welt" ? "world" : "hello", alternatives: [], translatedSentence: "Hello world." }) });
+  const fetchMock = vi.fn().mockReturnValueOnce(new Promise((resolve) => { finish = resolve; })).mockResolvedValue(response("Welt")); vi.stubGlobal("fetch", fetchMock);
+  paste("Hallo Welt."); click("Hallo");
+  await act(async () => click("Welt"));
+  await act(async () => finish(response("Hallo")));
+  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(container.querySelector(".reader-translation-popup strong")!.textContent).toBe("Welt");
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("world");
+  expect(translate).not.toHaveBeenCalled();
+});
+it("leaves words unmarked until Gemini provides CEFR levels", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, targetLanguage: "en", sourceLanguage: "de", geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  let finish!: (value: unknown) => void;
+  vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise((resolve) => { finish = resolve; })));
+  paste("hubris airport"); click("C2");
+  const token = Array.from(container.querySelectorAll(".reader-word")).find((node) => node.textContent === "hubris")!;
+  expect(token.hasAttribute("data-cefr")).toBe(false);
+  expect(container.querySelector(".reader-cefr-status")!.textContent).toContain("Gemini is analyzing");
+  await act(async () => finish({ ok: true, json: async () => ({ tokens: [{ offset: 0, word: "hubris", level: "C2" }] }) }));
+  expect(token.getAttribute("data-cefr")).toBe("C2");
+  expect(container.querySelector(".reader-cefr-status")!.textContent).toContain("provided by Gemini");
+});
+it("does not guess CEFR levels or call UDPipe without a Gemini connection", async () => {
+  const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+  paste("Diskrepanz Unverhältnismäßigkeit");
+  await act(async () => click("All levels"));
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(0);
+  expect(container.querySelector(".reader-cefr-status")!.textContent).toContain("CEFR requires a working Gemini connection");
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+it("retries a failed Gemini CEFR analysis without using heuristic grades", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [{ offset: 0, word: "Haus", level: "C2" }] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  paste("Haus");
+  await act(async () => click("C2"));
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(0);
+  await act(async () => click("Retry analysis"));
+  expect(container.querySelector(".reader-word")!.getAttribute("data-cefr")).toBe("C2");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls.every((call) => call[0] === "/api/gemini")).toBe(true);
+});
+it("discards CEFR results from a replaced article", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, targetLanguage: "en", sourceLanguage: "de", geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  let finish!: (value: unknown) => void;
+  const fetchMock = vi.fn().mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }))
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [{ offset: 0, word: "airport", level: "A2" }] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  paste("hubris"); click("All levels");
+  await act(async () => paste("airport"));
+  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+  await act(async () => finish({ ok: true, json: async () => ({ tokens: [{ offset: 0, word: "hubris", level: "C2" }] }) }));
+  expect(Array.from(container.querySelectorAll(".reader-word[data-cefr]")).map((token) => [token.textContent, token.getAttribute("data-cefr")]))
+    .toEqual([["airport", "A2"]]);
+});
+it("shows a CEFR response error after successful HTTP responses and can retry", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  const invalid = { ok: true, json: async () => ({ tokens: [{ id: 99, level: "C2" }] }) };
+  const fetchMock = vi.fn().mockResolvedValueOnce(invalid).mockResolvedValueOnce(invalid)
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ tokens: [{ id: 0, level: "C2" }] }) });
+  vi.stubGlobal("fetch", fetchMock);
+  paste("Haus");
+  await act(async () => click("C2"));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(container.querySelector(".reader-cefr-status")!.textContent).toContain("CEFR data could not be processed");
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(0);
+  await act(async () => click("Retry analysis"));
+  expect(container.querySelector(".reader-word")!.getAttribute("data-cefr")).toBe("C2");
+});
+it("keeps the translation popup usable when configured Gemini fails", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
+  vi.mocked(translate).mockResolvedValue({ primary: "hello", alternatives: [] });
+  paste("Hallo Welt.");
+  await act(async () => click("Hallo"));
+  expect(container.querySelector<HTMLInputElement>(".reader-translation-popup input")!.value).toBe("hello");
+  expect(translate).toHaveBeenCalledTimes(1);
+});
 it("collects, translates, persists context in a folder, and requests folder practice", async () => {
   vi.mocked(translate).mockResolvedValue({ primary: "hello", alternatives: [] });
   paste();
@@ -317,4 +419,44 @@ it("automatically scans the surrounding sentence to disambiguate word and word-g
     { targetWord: "Bank", translations: ["bench"] },
     { targetWord: "nahm an", translations: ["accepted"] },
   ]);
+});
+it("filters Gemini-provided CEFR levels without additional analysis requests", async () => {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
+  const text = "Haus Bahnhof Gesellschaft Perspektive Diskrepanz Unverhältnismäßigkeit.";
+  const tokens = [
+    ["Haus", "A1"], ["Bahnhof", "A2"], ["Gesellschaft", "B1"], ["Perspektive", "B2"],
+    ["Diskrepanz", "C1"], ["Unverhältnismäßigkeit", "C2"],
+  ].map(([word, level]) => ({ word, level, offset: text.indexOf(word) }));
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ tokens }) });
+  vi.stubGlobal("fetch", fetchMock);
+  paste(text);
+  const panel = container.querySelector(".reader-level-panel");
+  expect(panel).not.toBeNull();
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(0);
+  await act(async () => click("A2"));
+  expect(Array.from(container.querySelectorAll(".reader-word[data-cefr]")).map((n) => `${n.textContent}:${n.getAttribute("data-cefr")}`)).toEqual([
+    "Bahnhof:A2",
+  ]);
+  click("C1");
+  expect(Array.from(container.querySelectorAll(".reader-word[data-cefr]")).map((n) => `${n.textContent}:${n.getAttribute("data-cefr")}`)).toEqual([
+    "Bahnhof:A2",
+    "Diskrepanz:C1",
+  ]);
+  click("All levels");
+  expect(Array.from(container.querySelectorAll(".reader-word[data-cefr]")).map((n) => `${n.textContent}:${n.getAttribute("data-cefr")}`)).toEqual([
+    "Bahnhof:A2",
+    "Gesellschaft:B1",
+    "Perspektive:B2",
+    "Diskrepanz:C1",
+    "Unverhältnismäßigkeit:C2",
+  ]);
+  click("All levels");
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(0);
+  await act(async () => click("All levels"));
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(5);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  await act(async () => paste(text));
+  expect(container.querySelectorAll(".reader-word[data-cefr]")).toHaveLength(5);
+  expect(container.querySelector(".reader-cefr-status")!.textContent).toContain("provided by Gemini");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });

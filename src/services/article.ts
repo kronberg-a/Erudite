@@ -1,4 +1,7 @@
 import { languages } from "../types";
+import { analyzeSelectionWithGemini } from "./gemini";
+import { guessGermanGender, normalizeGermanNoun } from "./germanNouns";
+export { analyzeSelectionWithGemini as analyzeContextualSelection } from "./gemini";
 import type { Category, Language, PairData, WordCard } from "../types";
 
 export interface Article { title: string; text: string; url: string; language?: string }
@@ -86,10 +89,16 @@ function inferNounGender(
   }
   const lower = singular.toLocaleLowerCase(language);
   if (language === "de") {
-    if (/(?:ung|heit|keit|schaft|tät|ion|ik|enz|anz|ie|ei|ur)$/u.test(lower)) return "Fem";
-    if (/(?:chen|lein|ment|um|tum)$/u.test(lower)) return "Neut";
-    if (/(?:ling|ismus|ig|ich|or)$/u.test(lower)) return "Masc";
-    return undefined;
+    const dependents = sentenceTokens.filter((dep) => dep.head === token.id && (dep.deprel === "det" || dep.deprel === "case"));
+    for (const dep of dependents) {
+      const form = dep.form.toLocaleLowerCase("de");
+      if (form === "zur") return "Fem";
+      if (["ins", "ans", "das"].includes(form) && dep.feats.Number !== "Plur") return "Neut";
+      if (form === "die" && token.feats.Number !== "Plur" && dep.feats.Number !== "Plur") return "Fem";
+    }
+    const guessed = guessGermanGender(singular);
+    const masculineOrNeuter = dependents.some((dep) => /^(?:im|am|zum|vom|beim|dem|ein|kein)$/iu.test(dep.form) || dep.feats.Gender === "Masc,Neut");
+    return masculineOrNeuter && guessed === "Fem" ? "Masc" : guessed;
   }
   if (language === "fr") {
     return /(?:tion|sion|té|ure|ence|ance|ie|ade|ette|elle|euse|rice|esse|aison)$/u.test(lower) ? "Fem" : "Masc";
@@ -289,8 +298,10 @@ export function parseConlluCanonical(
     }
     return infinitive;
   }
-  if (token.upos === "NOUN" && token.feats.Number === "Plur") {
-    const rawLemma = (token.lemma && token.lemma !== "_" ? token.lemma : token.form).trim();
+  if (token.upos === "NOUN") {
+    const rawLemma = language === "de"
+      ? normalizeGermanNoun(token.form, token.lemma, token.feats.Number === "Plur")
+      : (token.lemma && token.lemma !== "_" && token.lemma !== "unknown" ? token.lemma : token.form).trim();
     if (!rawLemma) return trimmed;
     return formatSingularNounWithArticle(rawLemma, token, sentenceTokens, language);
   }
@@ -446,6 +457,13 @@ export async function canonicalizeWord(
   language: Language,
   wordOffset?: number,
   signal?: AbortSignal,
+): Promise<string> {
+  const result = await analyzeSelectionWithGemini({ word, sentence, from: language, to: language, wordOffset }, signal);
+  if (result) return result.canonicalWord;
+  return canonicalizeWordFallback(word, sentence, language, wordOffset, signal);
+}
+export async function canonicalizeWordFallback(
+  word: string, sentence: string, language: Language, wordOffset?: number, signal?: AbortSignal,
 ): Promise<string> {
   const trimmed = word.trim();
   const context = sentence.trim();

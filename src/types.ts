@@ -34,6 +34,7 @@ export interface Category {
   isActiveForStudy: boolean;
 }
 export interface Settings {
+  geminiApiKey?: string;
   interfaceLanguage: Language;
   sourceLanguage: Language;
   targetLanguage: Language;

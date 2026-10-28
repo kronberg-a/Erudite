@@ -1,13 +1,18 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { articleHandler } from "./server/article";
-export default defineConfig(({ command }) => ({
+import { geminiHandler } from "./server/gemini";
+import { loadEnv } from "vite";
+export default defineConfig(({ command, mode }) => {
+  const envKey = loadEnv(mode, process.cwd(), "").GEMINI_API_KEY;
+  if (!process.env.GEMINI_API_KEY && envKey) process.env.GEMINI_API_KEY = envKey;
+  return ({
   plugins: [
     react(),
     {
       name: "erudite-article-api",
-      configureServer(server) { server.middlewares.use("/api/article", articleHandler); },
-      configurePreviewServer(server) { server.middlewares.use("/api/article", articleHandler); },
+      configureServer(server) { server.middlewares.use("/api/article", articleHandler); server.middlewares.use("/api/gemini", geminiHandler); },
+      configurePreviewServer(server) { server.middlewares.use("/api/article", articleHandler); server.middlewares.use("/api/gemini", geminiHandler); },
     },
     {
       name: "erudite-development-entry",
@@ -44,4 +49,4 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: { environment: "node" },
-}));
+}); });

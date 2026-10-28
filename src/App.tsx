@@ -26,6 +26,7 @@ import { StudyView } from "./components/StudyView";
 import { CategoryView } from "./components/CategoryView";
 import { SettingsView } from "./components/SettingsView";
 import { ReaderView } from "./components/ReaderView";
+import { configureGemini, initializeGemini } from "./services/gemini";
 type Page = "learn" | "categories" | "reader" | "settings";
 const initial = loadData();
 export default function App() {
@@ -38,6 +39,10 @@ export default function App() {
     selection: StudySelection;
   } | null>(null);
   const s = data.settings;
+  useEffect(() => {
+    configureGemini(s.geminiApiKey);
+    void initializeGemini();
+  }, [s.geminiApiKey]);
   const t = translator(s.interfaceLanguage);
   const key = pairKey(s.sourceLanguage, s.targetLanguage);
   const pair = data.pairs[key] ?? seedPair(s.sourceLanguage, s.targetLanguage);

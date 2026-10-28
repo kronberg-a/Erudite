@@ -1,9 +1,16 @@
 import { Download, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AppData, Language, Settings } from "../types";
 import { languageNames, languages } from "../types";
-import type { T } from "../i18n/translations";
+import type { T, TextKey } from "../i18n/translations";
 import { hydrateData } from "../services/storage";
+import { configureGemini, getGeminiConnectionState, subscribeGeminiConnection, testGeminiConnection } from "../services/gemini";
+import type { GeminiConnectionState } from "../services/gemini";
+const connectionLabels: Record<GeminiConnectionState, TextKey> = {
+  unconfigured: "geminiNotConfigured", untested: "geminiNotTested", checking: "geminiChecking", connected: "geminiConnected",
+  auth_error: "geminiAuthError", quota_error: "geminiQuotaError", model_error: "geminiModelError", unavailable: "geminiUnavailable",
+  response_error: "geminiResponseError", timeout: "geminiTimeout",
+};
 export function LanguageSelect({
   label,
   value,
@@ -47,12 +54,19 @@ export function SettingsView({
   const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState(false);
   const s = data.settings;
+  const connection = useSyncExternalStore(subscribeGeminiConnection, getGeminiConnectionState);
+  const connectionRequest = useRef<AbortController | null>(null);
+  useEffect(() => {
+    configureGemini(s.geminiApiKey);
+    return () => { connectionRequest.current?.abort(); };
+  }, [s.geminiApiKey]);
   const [goalInput, setGoalInput] = useState(s.dailyWordGoal?.toString() ?? "");
   const validGoal = (value: string) =>
     value.trim() !== "" && Number.isInteger(Number(value)) &&
     Number(value) >= 1 && Number(value) <= 50;
   const download = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
+    const backup = { ...data, settings: { ...data.settings, geminiApiKey: undefined } };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -180,6 +194,27 @@ export function SettingsView({
 
         </section>
         <div>
+          <section className="panel settings-panel">
+            <h2>{t("geminiTitle")}</h2>
+            <label htmlFor="gemini-api-key">{t("geminiApiKey")}</label>
+            <input id="gemini-api-key" type="password" autoComplete="off" spellCheck={false}
+              maxLength={512} value={s.geminiApiKey ?? ""} aria-describedby="gemini-key-hint"
+              onChange={(event) => changeSettings({ geminiApiKey: event.target.value.trim() || undefined })} />
+            <p id="gemini-key-hint" className="form-message">{t("geminiKeyHint")}</p>
+            <div className="gemini-connection">
+              <p role="status" aria-live="polite" aria-atomic="true" className="gemini-connection-status" data-connection={connection}>
+                <span className="gemini-connection-dot" aria-hidden="true" />{t(connectionLabels[connection])}
+              </p>
+              <button type="button" className="outline-button" disabled={connection === "checking"}
+                onClick={() => {
+                  connectionRequest.current?.abort();
+                  const controller = new AbortController();
+                  connectionRequest.current = controller;
+                  void testGeminiConnection(s.geminiApiKey, controller.signal).catch(() => {});
+                }}>{t("geminiTestConnection")}</button>
+            </div>
+            <p className="form-message">{t("geminiConnectionHint")}</p>
+          </section>
           <section className="panel settings-panel">
             <h2>{t("appearance")}</h2>
             <div className="theme-options">
