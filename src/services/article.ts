@@ -2,7 +2,7 @@ import { languages } from "../types";
 import type { Category, Language, PairData, WordCard } from "../types";
 
 export interface Article { title: string; text: string; url: string; language?: string }
-export interface CollectedWord { word: string; translation: string; sentence: string }
+export interface CollectedWord { word: string; translation: string; sentence: string; translatedSentence?: string }
 export async function importArticle(url: string, signal?: AbortSignal): Promise<Article> {
   const parsed = new URL(url);
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Invalid URL");
@@ -52,7 +52,7 @@ export function collectArticleWords(pair: PairData, entries: CollectedWord[], fo
     } else {
       const word: WordCard = {
         id: crypto.randomUUID(), targetWord: entry.word.trim(), translations: [entry.translation.trim()],
-        examples: entry.sentence.trim() ? [{ targetSentence: entry.sentence.trim(), translatedSentence: "" }] : [],
+        examples: entry.sentence.trim() ? [{ targetSentence: entry.sentence.trim(), translatedSentence: entry.translatedSentence?.trim() || "" }] : [],
         categoryIds: [folderId], status: "NEW", step: 0, repCount: 0, lastReviewedOrder: 0, createdAt: Date.now(),
       };
       words.push(word);

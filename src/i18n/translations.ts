@@ -1,6 +1,15 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  translationPreview: ["Translation preview", "Предпросмотр перевода", "Übersetzungsvorschau", "Aperçu de la traduction", "Anteprima della traduzione", "Vista previa de traducción"],
+  previewTranslation: ["Preview translation", "Перевод для добавления", "Übersetzung zum Hinzufügen", "Traduction à ajouter", "Traduzione da aggiungere", "Traducción para añadir"],
+  addToCollection: ["Add to list", "В список", "Zur Liste", "Ajouter à la liste", "Aggiungi alla lista", "Añadir a la lista"],
+  alreadyCollected: ["Already in list", "Уже в списке", "Bereits in der Liste", "Déjà dans la liste", "Già nella lista", "Ya está en la lista"],
+  pickWords: ["Select words", "Выбрать слова", "Wörter auswählen", "Choisir des mots", "Seleziona parole", "Seleccionar palabras"],
+  pickWordsHint: ["Tap words to select or deselect", "Нажимайте слова для выбора или отмены", "Wörter zum Auswählen oder Abwählen antippen", "Touchez les mots pour les sélectionner ou retirer", "Tocca le parole per selezionarle o rimuoverle", "Toca palabras para seleccionarlas o quitarlas"],
+  translateSelection: ["Translate selection", "Перевести выбранное", "Auswahl übersetzen", "Traduire la sélection", "Traduci la selezione", "Traducir selección"],
+  selectionTooLong: ["Select fewer words (maximum 2,000 characters).", "Выберите меньше слов (не более 2000 символов).", "Weniger Wörter auswählen (maximal 2.000 Zeichen).", "Sélectionnez moins de mots (2 000 caractères maximum).", "Seleziona meno parole (massimo 2.000 caratteri).", "Selecciona menos palabras (máximo 2000 caracteres)."],
+  sentenceTranslation: ["Sentence translation", "Перевод предложения", "Satzübersetzung", "Traduction de la phrase", "Traduzione della frase", "Traducción de la oración"],
   newCollection: ["Start another batch", "Начать новую подборку", "Neue Sammlung beginnen", "Commencer un nouveau lot", "Inizia un nuovo gruppo", "Empezar otro lote"],
   reader: ["Reader", "Чтение", "Lesen", "Lecture", "Lettura", "Lectura"],
   readerTitle: ["Read. Collect. Learn.", "Читайте. Собирайте. Учите.", "Lesen. Sammeln. Lernen.", "Lisez. Collectez. Apprenez.", "Leggi. Raccogli. Impara.", "Lee. Recoge. Aprende."],
