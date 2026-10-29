@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react";
 import { ArrowRight, CircleHelp, Volume2 } from "lucide-react";
 import type { Evaluation, Settings, TypingInput, WordCard } from "../types";
 import type { T } from "../i18n/translations";
+import { readUiState, uiBoolean, uiCount, uiObject, uiString, useUiKey, writeUiState } from "../hooks/useUiState";
 import {
   answerTarget,
   evaluateAnswer,
@@ -12,6 +13,7 @@ import {
 } from "../core/typing";
 
 interface Props {
+  resumeTurn?: string;
   card: WordCard;
   settings: Settings;
   inputMode: TypingInput;
@@ -21,6 +23,10 @@ interface Props {
   onListen: () => void;
   audioError: boolean;
   t: T;
+}
+interface TypingSnapshot {
+  turn: string; input: string; inputMode: TypingInput; failedInput: string | null;
+  usedHint: boolean; failedAttempts: number; tiles: { char: string; id: number }[]; selected: number[];
 }
 export function HighlightedSentence({
   sentence,
@@ -42,6 +48,7 @@ export function HighlightedSentence({
   );
 }
 export function TypingCard({
+  resumeTurn,
   card,
   settings,
   inputMode: initialInputMode,
@@ -52,14 +59,25 @@ export function TypingCard({
   audioError,
   t,
 }: Props) {
-  const [input, setInput] = useState("");
-  const [inputMode, setInputMode] = useState(initialInputMode);
-  const [failedInput, setFailedInput] = useState<string | null>(null);
-  const [usedHint, setUsedHint] = useState(false);
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const attemptCount = useRef(0);
+  const snapshotKey = useUiKey("typing");
+  const [resume] = useState(() => {
+    const characters = Array.from(answerTarget(card.targetWord));
+    return readUiState<TypingSnapshot | null>(snapshotKey, null, (value) => uiObject(value) && value.turn === resumeTurn && uiString(value.input) &&
+      ["KEYBOARD", "TILES"].includes(value.inputMode as string) && (value.failedInput === null || uiString(value.failedInput)) &&
+      uiBoolean(value.usedHint) && uiCount(value.failedAttempts) && value.failedAttempts <= 3 &&
+      Array.isArray(value.tiles) && value.tiles.length === characters.length && value.tiles.every((tile) => uiObject(tile) && uiCount(tile.id) && characters[tile.id] === tile.char) &&
+      new Set(value.tiles.map((tile) => tile.id)).size === characters.length && Array.isArray(value.selected) &&
+      value.selected.every((id) => uiCount(id) && id < characters.length) && new Set(value.selected).size === value.selected.length);
+  });
+  const [input, setInput] = useState(resume?.input ?? "");
+  const [inputMode, setInputMode] = useState(resume?.inputMode ?? initialInputMode);
+  const [failedInput, setFailedInput] = useState<string | null>(resume?.failedInput ?? null);
+  const [usedHint, setUsedHint] = useState(resume?.usedHint ?? false);
+  const [failedAttempts, setFailedAttempts] = useState(resume?.failedAttempts ?? 0);
+  const attemptCount = useRef(resume?.failedAttempts ?? 0);
   const attemptStatusId = useId();
   const [tiles] = useState(() => {
+    if (resume) return resume.tiles;
     const characters = Array.from(answerTarget(card.targetWord)).map(
       (char, id) => ({ char, id }),
     );
@@ -69,10 +87,13 @@ export function TypingCard({
     }
     return characters;
   });
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<number[]>(resume?.selected ?? []);
   const inputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
-  const submitted = useRef(false);
+  const submitted = useRef(!!evaluation);
+  useEffect(() => {
+    if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected });
+  }, [snapshotKey, resumeTurn, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected]);
   useEffect(() => {
     if (!evaluation) {
       if (inputMode === "KEYBOARD") inputRef.current?.focus();

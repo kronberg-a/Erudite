@@ -48,3 +48,15 @@ export function resetCard(card: WordCard, status: "NEW" | "REVIEW" = "NEW"): Wor
   return { ...card, ...emptySchedule, ...(status === "REVIEW" ? { interval: 1, nextReviewDate: Date.now() + DAY } : {}), status, step: status === "REVIEW" ? 3 : 0,
     repCount: 0, lastReviewedOrder: 0, lastStudiedAt: undefined };
 }
+export function remainingMasteryRecalls(card: WordCard): number {
+  let current = { ...card };
+  let remaining = 0;
+  // Follow the same calendar transitions as study grading, assuming every
+  // future recall is unassisted, correct and made when its review is due.
+  while (current.status !== "MASTERED") {
+    current = reviewCard(current, "know", { instantMasterOnFirstTry: false }, current.lastReviewedOrder + 1,
+      { now: current.nextReviewDate ?? 0 });
+    remaining++;
+  }
+  return remaining;
+}

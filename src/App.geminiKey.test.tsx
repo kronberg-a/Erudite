@@ -12,6 +12,7 @@ const pastedKey = "pasted-test-key";
 beforeEach(() => {
   vi.resetModules();
   localStorage.clear();
+  sessionStorage.clear();
   localStorage.setItem("erudite:v3", JSON.stringify({
     version: 3, reviewOrder: 0, settings: defaultSettings,
     pairs: { "en-de": { words: [], categories: [] } },
@@ -24,6 +25,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.clear();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 

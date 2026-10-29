@@ -201,6 +201,7 @@ export function SettingsView({
               maxLength={512} value={s.geminiApiKey ?? ""} aria-describedby="gemini-key-hint"
               onChange={(event) => changeSettings({ geminiApiKey: event.target.value.trim() || undefined })} />
             <p id="gemini-key-hint" className="form-message">{t("geminiKeyHint")}</p>
+            <a className="text-button" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">{t("getGeminiApiKey")}</a>
             <div className="gemini-connection">
               <p role="status" aria-live="polite" aria-atomic="true" className="gemini-connection-status" data-connection={connection}>
                 <span className="gemini-connection-dot" aria-hidden="true" />{t(connectionLabels[connection])}

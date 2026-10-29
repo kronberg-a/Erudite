@@ -1,6 +1,69 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalizeWord, collectArticleWords, importArticle, parseConlluCanonical, selectContextualTranslation, sentenceAt, wordParts } from "./article";
 import { seedPair } from "../i18n/seedData";
+import { articleWordStats, deleteSavedArticle, saveArticle, MAX_SAVED_ARTICLES, MAX_SAVED_ARTICLE_CHARS } from "./article";
+
+describe("article word counters", () => {
+  it("counts word occurrences and distinct memorized entries without substring matches", () => {
+    const base = seedPair("en", "de").words[0];
+    const words = [
+      { ...base, id: "one", targetWord: "HALLO", status: "MASTERED" as const, examples: [] },
+      { ...base, id: "duplicate", targetWord: "hallo", status: "MASTERED" as const, examples: [] },
+      { ...base, id: "learning", targetWord: "Welt", status: "LEARNING" as const, examples: [] },
+      { ...base, id: "substring", targetWord: "all", status: "MASTERED" as const, examples: [] },
+    ];
+    expect(articleWordStats("Hallo Welt! Hallo, 123.", words, "de")).toEqual({ total: 3, learned: 1 });
+    expect(articleWordStats("123...", words, "de")).toEqual({ total: 0, learned: 0 });
+    expect(articleWordStats("", words, "de")).toEqual({ total: 0, learned: 0 });
+  });
+  it("links dictionary forms and nonadjacent verb groups through saved article context", () => {
+    const base = seedPair("en", "de").words[0];
+    const words = [
+      { ...base, targetWord: "aufmachen", status: "MASTERED" as const, examples: [{ targetSentence: "Sie machten die Türen auf.", translatedSentence: "They opened the doors." }] },
+      { ...base, targetWord: "die Tür", status: "MASTERED" as const, examples: [{ targetSentence: "Sie machten die Türen auf.", translatedSentence: "They opened the doors." }] },
+      { ...base, targetWord: "der Bahnhof", status: "MASTERED" as const, examples: [{ targetSentence: "Der Bahnhof ist neu.", translatedSentence: "The station is new." }] },
+    ];
+    expect(articleWordStats("Sie machten die Türen auf.", words, "de")).toEqual({ total: 5, learned: 2 });
+  });
+  it.each([
+    ["en", "Hello, world!", 2], ["ru", "Привет, мир!", 2], ["de", "Hallo Welt!", 2],
+    ["fr", "L’école est ouverte.", 3], ["it", "L’acqua è fresca.", 3], ["es", "El árbol crece.", 3],
+  ] as const)("tokenizes %s consistently with the reader", (language, text, total) => {
+    expect(articleWordStats(text, [], language)).toEqual({ total, learned: 0 });
+  });
+});
+
+describe("saved article library", () => {
+  const article = { title: " News ", text: " Hallo Welt. ", url: "https://example.com/story#top", language: "de" };
+  it("saves, updates duplicates and deletes without mutating the pair", () => {
+    const pair = seedPair("en", "de");
+    const original = structuredClone(pair);
+    const first = saveArticle(pair, article);
+    expect(pair).toEqual(original);
+    expect(first.saved).toMatchObject({ title: "News", text: "Hallo Welt.", language: "de", url: "https://example.com/story" });
+    const second = saveArticle(first.pair, { ...article, text: "Updated", url: "https://example.com/story#other" });
+    expect(second.saved.id).toBe(first.saved.id);
+    expect(second.pair.savedArticles).toHaveLength(1);
+    expect(first.pair.savedArticles![0].text).toBe("Hallo Welt.");
+    const byText = saveArticle(first.pair, { ...article, url: "" });
+    expect(byText.saved.id).toBe(first.saved.id);
+    expect(deleteSavedArticle(first.pair, first.saved.id).savedArticles).toEqual([]);
+    expect(first.pair.savedArticles).toHaveLength(1);
+    expect(collectArticleWords(first.pair, [{ word: "Welt", translation: "world", sentence: "Hallo Welt." }], "Folder", "de").pair.savedArticles).toEqual(first.pair.savedArticles);
+  });
+  it("caps text and library size, retaining newest articles", () => {
+    let pair = seedPair("en", "de");
+    for (let i = 0; i < MAX_SAVED_ARTICLES + 2; i++) pair = saveArticle(pair, { title: `News ${i}`, text: "Body", url: "" }).pair;
+    expect(pair.savedArticles).toHaveLength(MAX_SAVED_ARTICLES);
+    expect(pair.savedArticles![0].title).toBe("News 51");
+    const long = { ...article, text: "a".repeat(MAX_SAVED_ARTICLE_CHARS + 10) };
+    const saved = saveArticle(pair, long);
+    expect(saved.saved.text).toHaveLength(MAX_SAVED_ARTICLE_CHARS);
+    expect(saveArticle(saved.pair, long).saved.id).toBe(saved.saved.id);
+    expect(() => saveArticle(pair, { ...article, text: " " })).toThrow();
+    expect(() => saveArticle(pair, { ...article, title: " " })).toThrow();
+  });
+});
 
 afterEach(() => vi.unstubAllGlobals());
 describe("article text and collection", () => {

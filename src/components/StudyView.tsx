@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,6 +32,8 @@ import { useKeyboard } from "../hooks/useKeyboard";
 import { needsTyping } from "../core/typing";
 import { TypingCard } from "./TypingCard";
 import { localDate, recordRecall, todayProgress } from "../core/dailyGoal";
+import { readUiState, uiBoolean, uiCount, uiObject, useUiKey, writeUiState } from "../hooks/useUiState";
+import { validateData } from "../services/storage";
 interface Props {
   pair: PairData;
   settings: Settings;
@@ -53,6 +55,13 @@ interface Undo {
   initialSessionCount: number;
   dailyProgress: DailyProgress;
 }
+interface StudySnapshot {
+  sessionId: string;
+  pairSignature: string;
+  reviewOrder: number; mode: Mode; queue: string[]; started: boolean; completed: number;
+  initialSessionCount: number; history: Undo[]; revealed: boolean; evaluation: Evaluation | null;
+  typingInput: TypingInput; turn: number;
+}
 export function StudyView({
   pair,
   settings,
@@ -63,27 +72,52 @@ export function StudyView({
   reviewOrder,
   dailyProgress,
 }: Props) {
+  const snapshotKey = useUiKey(`study:${settings.studyMode}:${JSON.stringify(initialSelection ?? null)}`);
+  const pairSignature = useMemo(() => snapshotKey ? JSON.stringify(pair.words.map((word) => [
+    word.id, word.targetWord, word.transcription, word.translations, word.examples, word.categoryIds,
+    word.status, word.step, word.repCount, word.lastReviewedOrder, word.createdAt, word.lastStudiedAt,
+    word.interval ?? 0, word.nextReviewDate ?? 0, word.easeFactor ?? 2.3, word.reviewRepetitions ?? 0,
+  ])) : "", [pair.words, snapshotKey]);
+  const [resume] = useState(() => {
+    const wordIds = new Set(pair.words.map((word) => word.id));
+    const validQueue = (value: unknown) => Array.isArray(value) && value.length <= 10000 && value.every((id) => wordIds.has(id));
+    const validMode = (value: unknown) => ["mixed", "new", "review"].includes(value as string);
+    return readUiState<StudySnapshot | null>(snapshotKey, null, (value) => uiObject(value) && typeof value.sessionId === "string" && value.sessionId.length <= 100 && value.pairSignature === pairSignature && value.reviewOrder === reviewOrder && validMode(value.mode) &&
+      validQueue(value.queue) && uiBoolean(value.started) && (!value.started || (value.queue as string[]).length > 0) &&
+      uiCount(value.completed) && uiCount(value.initialSessionCount) && uiCount(value.turn) && uiBoolean(value.revealed) &&
+      (value.evaluation === null || ["CORRECT", "ASSISTED", "INCORRECT"].includes(value.evaluation as string)) &&
+      ["KEYBOARD", "TILES"].includes(value.typingInput as string) && Array.isArray(value.history) && value.history.length <= 10000 &&
+      value.history.every((item) => uiObject(item) && typeof item.cardId === "string" && uiObject(item.previousCardState) &&
+        item.previousCardState.id === item.cardId && validQueue(item.queue) && uiCount(item.previousQueueIndex) &&
+        uiCount(item.reviewOrder) && validMode(item.mode) && uiCount(item.completed) && uiCount(item.initialSessionCount) &&
+        validateData({ version: 2, reviewOrder: item.reviewOrder, dailyProgress: item.dailyProgress, settings,
+          pairs: { [`${settings.sourceLanguage}-${settings.targetLanguage}`]: { words: [item.previousCardState], categories: pair.categories } } })));
+  });
   const [day, setDay] = useState(localDate);
-  const [mode, setMode] = useState<Mode>("mixed");
+  const [sessionId, setSessionId] = useState(() => resume?.sessionId ?? crypto.randomUUID());
+  const [mode, setMode] = useState<Mode>(resume?.mode ?? "mixed");
   const [selection] = useState<StudySelection | undefined>(
     initialSelection,
   );
-  const [queue, setQueue] = useState<string[]>([]);
-  const [started, setStarted] = useState(false);
-  const [completed, setCompleted] = useState(0);
-  const [initialSessionCount, setInitialSessionCount] = useState(0);
-  const [history, setHistory] = useState<Undo[]>([]);
-  const [revealed, setRevealed] = useState(false);
+  const [queue, setQueue] = useState<string[]>(resume?.queue ?? []);
+  const [started, setStarted] = useState(resume?.started ?? false);
+  const [completed, setCompleted] = useState(resume?.completed ?? 0);
+  const [initialSessionCount, setInitialSessionCount] = useState(resume?.initialSessionCount ?? 0);
+  const [history, setHistory] = useState<Undo[]>(resume?.history ?? []);
+  const [revealed, setRevealed] = useState(resume?.revealed ?? false);
   const [lastAction, setLastAction] = useState<Action | null>(null);
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
-  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
-  const [typingInput, setTypingInput] = useState<TypingInput>("KEYBOARD");
-  const [turn, setTurn] = useState(0);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(resume?.evaluation ?? null);
+  const [typingInput, setTypingInput] = useState<TypingInput>(resume?.typingInput ?? "KEYBOARD");
+  const [turn, setTurn] = useState(resume?.turn ?? 0);
   const gradeButton = useRef<HTMLButtonElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
-  const evaluated = useRef(false);
+  const evaluated = useRef(!!resume?.evaluation);
   const committedTurn = useRef(-1);
+  useEffect(() => {
+    writeUiState(snapshotKey, { sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, turn });
+  }, [snapshotKey, sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, turn]);
   const available = buildStudyQueue(pair, mode, selection);
   const inProgress = buildStudyQueue(pair, "review", selection).length;
   const fresh = buildStudyQueue(pair, "new", selection).length;
@@ -145,6 +179,7 @@ export function StudyView({
   const start = () => {
     const nextQueue = buildStudyQueue(pair, mode, selection);
     if (!nextQueue.length) return;
+    setSessionId(crypto.randomUUID());
     setQueue(nextQueue);
     setInitialSessionCount(nextQueue.length);
     setStarted(true);
@@ -414,6 +449,7 @@ export function StudyView({
                 {typing ? (
                   <TypingCard
                     key={turn}
+                    resumeTurn={`${snapshotKey}:${sessionId}:${card.id}:${turn}`}
                     card={card}
                     settings={settings}
                     inputMode={typingInput}

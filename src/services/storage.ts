@@ -4,6 +4,7 @@ import type {
   Language,
   PairData,
   Settings,
+  SavedArticle,
   WordCard,
 } from "../types";
 import { languages } from "../types";
@@ -32,7 +33,7 @@ type StoredData = {
   version: number;
   settings: Settings;
   reviewOrder?: number;
-  pairs: Record<string, { words: StoredWord[]; categories: Category[] }>;
+  pairs: Record<string, { words: StoredWord[]; categories: Category[]; savedArticles?: SavedArticle[] }>;
 };
 const integer = (value: unknown) =>
   Number.isSafeInteger(value) && Number(value) >= 0;
@@ -76,6 +77,13 @@ function validStored(value: unknown, version: 1 | 2 | 3): boolean {
       !!p &&
       Array.isArray(p.words) &&
       Array.isArray(p.categories) &&
+      (p.savedArticles === undefined || (Array.isArray(p.savedArticles) &&
+        p.savedArticles.every((a) => !!a && typeof a.id === "string" && !!a.id.trim() &&
+          typeof a.title === "string" && !!a.title.trim() && a.title.length <= 300 &&
+          typeof a.text === "string" && !!a.text.trim() && a.text.length <= 200_000 &&
+          typeof a.url === "string" && a.url.length <= 4096 &&
+          (a.language === undefined || languages.includes(a.language)) && Number.isFinite(a.createdAt)) &&
+        new Set(p.savedArticles.map((a) => a.id)).size === p.savedArticles.length)) &&
       p.categories.every(
         (c) =>
           !!c &&
@@ -175,6 +183,7 @@ export function hydrateData(value: unknown): AppData {
       key,
       {
         categories: p.categories,
+        savedArticles: p.savedArticles?.map((a) => ({ ...a })) ?? [],
         words: p.words.map((w) => ({
           id: w.id,
           targetWord: w.targetWord,

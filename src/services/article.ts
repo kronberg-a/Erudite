@@ -2,9 +2,34 @@ import { languages } from "../types";
 import { analyzeSelectionWithGemini } from "./gemini";
 import { guessGermanGender, normalizeGermanNoun } from "./germanNouns";
 export { analyzeSelectionWithGemini as analyzeContextualSelection } from "./gemini";
-import type { Category, Language, PairData, WordCard } from "../types";
+import type { Category, Language, PairData, SavedArticle, WordCard } from "../types";
 
 export interface Article { title: string; text: string; url: string; language?: string }
+export const MAX_SAVED_ARTICLES = 50;
+export const MAX_SAVED_ARTICLE_CHARS = 100_000;
+function normalizedUrl(raw: string): string {
+  try { const url = new URL(raw.trim()); url.hash = ""; return url.href; }
+  catch { return raw.trim(); }
+}
+export function matchingSavedArticle(pair: PairData, article: Article): SavedArticle | undefined {
+  const url = normalizedUrl(article.url);
+  return pair.savedArticles?.find((a) => (url && normalizedUrl(a.url) === url) ||
+    (a.title.trim() === article.title.trim().slice(0, 300) && a.text.trim() === article.text.trim().slice(0, MAX_SAVED_ARTICLE_CHARS)));
+}
+export function saveArticle(pair: PairData, article: Article): { pair: PairData; saved: SavedArticle } {
+  if (!article.title.trim() || !article.text.trim()) throw new Error("Empty article");
+  const existing = matchingSavedArticle(pair, article);
+  const saved: SavedArticle = {
+    id: existing?.id ?? crypto.randomUUID(), createdAt: existing?.createdAt ?? Date.now(),
+    title: article.title.trim().slice(0, 300), text: article.text.trim().slice(0, MAX_SAVED_ARTICLE_CHARS),
+    url: normalizedUrl(article.url).slice(0, 4096),
+    language: languages.includes(article.language as Language) ? article.language as Language : undefined,
+  };
+  return { saved, pair: { ...pair, savedArticles: [saved, ...(pair.savedArticles ?? []).filter((a) => a.id !== saved.id)].slice(0, MAX_SAVED_ARTICLES) } };
+}
+export function deleteSavedArticle(pair: PairData, id: string): PairData {
+  return { ...pair, savedArticles: (pair.savedArticles ?? []).filter((a) => a.id !== id) };
+}
 export interface CollectedWord { word: string; translation: string; sentence: string; translatedSentence?: string }
 export async function importArticle(url: string, signal?: AbortSignal): Promise<Article> {
   const parsed = new URL(url);
@@ -31,6 +56,26 @@ export async function importArticle(url: string, signal?: AbortSignal): Promise<
 }
 export function wordParts(text: string): string[] {
   return text.split(/(\p{L}[\p{L}\p{M}]*(?:['’\-][\p{L}\p{M}]+)*)/gu);
+}
+export function articleWordStats(text: string, words: WordCard[], language: Language): { total: number; learned: number } {
+  const tokens = (value: string) => wordParts(value).filter((_, index) => index % 2 === 1)
+    .map((word) => word.normalize("NFC").toLocaleLowerCase(language));
+  const articleTokens = tokens(text);
+  const content = ` ${articleTokens.join(" ")} `;
+  const learned = new Set<string>();
+  for (const word of words) {
+    if (word.status !== "MASTERED") continue;
+    const key = tokens(word.targetWord).join(" ");
+    if (!key || learned.has(key)) continue;
+    // Saved example sentences link normalized or nonadjacent selections back
+    // to the article even when their dictionary form differs from its text.
+    const appears = content.includes(` ${key} `) || word.examples.some((example) => {
+      const sentence = tokens(example.targetSentence).join(" ");
+      return !!sentence && content.includes(` ${sentence} `);
+    });
+    if (appears) learned.add(key);
+  }
+  return { total: articleTokens.length, learned: learned.size };
 }
 export function sentenceAt(text: string, offset: number): string {
   return sentenceContextAt(text, offset).sentence;
@@ -516,5 +561,5 @@ export function collectArticleWords(pair: PairData, entries: CollectedWord[], fo
       words.push(word);
     }
   }
-  return { pair: { words, categories: [...pair.categories, category] }, folderId };
+  return { pair: { ...pair, words, categories: [...pair.categories, category] }, folderId };
 }

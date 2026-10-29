@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowRight, BookOpenText, Languages, ListChecks, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Bookmark, BookOpen, BookOpenText, Languages, ListChecks, Plus, Search, Trash2, X } from "lucide-react";
 import type { PairData, Settings, StudySelection } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
-import { analyzeContextualSelection, canonicalizeWordFallback, collectArticleWords, importArticle, selectContextualTranslation, sentenceAt, sentenceContextAt, wordKey, wordParts } from "../services/article";
+import { analyzeContextualSelection, articleWordStats, canonicalizeWordFallback, collectArticleWords, deleteSavedArticle, importArticle, matchingSavedArticle, saveArticle, selectContextualTranslation, sentenceAt, sentenceContextAt, wordKey, wordParts } from "../services/article";
 import type { Article, CollectedWord } from "../services/article";
 import { analyzeArticleCefr, CEFR_LEVELS } from "../services/cefr";
 import type { CefrLevel } from "../services/cefr";
 import { clearGeminiBackoff, isGeminiConfigured } from "../services/gemini";
 import { GeminiAnalysisError } from "../services/geminiProtocol";
+import { uiBoolean, uiCount, uiObject, uiString, useUiState } from "../hooks/useUiState";
 
 interface PickedWord { word: string; offset: number }
 interface Entry extends CollectedWord { key: string; offset: number; sentenceOffset?: number; sourceWord?: string; group?: boolean; picked?: PickedWord[]; state: "pending" | "ready" | "error" }
@@ -16,20 +17,29 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
   pair: PairData; settings: Settings; update: (pair: PairData) => void;
   onPractice: (selection: StudySelection) => void; t: T;
 }) {
-  const [url, setUrl] = useState("");
-  const [paste, setPaste] = useState("");
-  const [pasteTitle, setPasteTitle] = useState("");
-  const [article, setArticle] = useState<Article | null>(null);
-  const [entries, setEntries] = useState<Entry[]>([]);
+  const [url, setUrl] = useUiState("reader:url", "", uiString);
+  const [query, setQuery] = useUiState("reader:query", "", uiString);
+  const urlInput = useRef<HTMLInputElement | null>(null);
+  const [paste, setPaste] = useUiState("reader:paste", "", uiString);
+  const [pasteTitle, setPasteTitle] = useUiState("reader:pasteTitle", "", uiString);
+  const [pasteOpen, setPasteOpen] = useUiState("reader:pasteOpen", false, uiBoolean);
+  const [article, setArticle] = useUiState<Article | null>("reader:article", null, (value) => value === null || (uiObject(value) &&
+    uiString(value.title) && typeof value.text === "string" && value.text.length <= 2_000_000 && uiString(value.url) &&
+    (value.language === undefined || typeof value.language === "string")));
+  const [entries, setEntries] = useUiState<Entry[]>("reader:entries", [], (value) => Array.isArray(value) && value.length <= 50 && value.every((entry) =>
+    uiObject(entry) && [entry.key, entry.word, entry.translation, entry.sentence].every(uiString) && uiCount(entry.offset) &&
+    ["ready", "error"].includes(entry.state as string) && (entry.translatedSentence === undefined || uiString(entry.translatedSentence)) &&
+    (entry.sentenceOffset === undefined || uiCount(entry.sentenceOffset)) && (entry.sourceWord === undefined || uiString(entry.sourceWord)) &&
+    (entry.group === undefined || typeof entry.group === "boolean") && (entry.picked === undefined || (Array.isArray(entry.picked) && entry.picked.every((word) => uiObject(word) && uiString(word.word) && uiCount(word.offset))))));
   const [preview, setPreview] = useState<Entry | null>(null);
-  const [folder, setFolder] = useState("");
-  const [savedFolder, setSavedFolder] = useState<string | null>(null);
+  const [folder, setFolder] = useUiState("reader:folder", "", uiString);
+  const [savedFolder, setSavedFolder] = useUiState<string | null>("reader:savedFolder", null, (value) => value === null || pair.categories.some((category) => category.id === value));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [limit, setLimit] = useState(false);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<PickedWord[]>([]);
-  const [activeLevels, setActiveLevels] = useState<CefrLevel[]>([]);
+  const [activeLevels, setActiveLevels] = useUiState<CefrLevel[]>("reader:levels", [], (value) => Array.isArray(value) && value.length <= CEFR_LEVELS.length && value.every((level) => CEFR_LEVELS.includes(level)));
   const [cefrAnalysis, setCefrAnalysis] = useState<{
     text: string; language: Settings["targetLanguage"]; apiKey?: string;
     state: "loading" | "ready" | "error"; levels?: Map<number, CefrLevel>; issue?: "response" | "timeout";
@@ -179,6 +189,8 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     }).catch(() => { if (!controller.signal.aborted) fallback(); });
   };
   const load = (next: Article) => {
+    importing.current?.abort(); setBusy(false);
+    setUrl(next.url);
     cancelPicking();
     closePreview();
     setCefrAnalysis(null);
@@ -307,15 +319,43 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     const start = offset; offset += text.length + 1;
     return { text, start };
   }).filter((p) => p.text.trim());
+  const savedArticles = (pair.savedArticles ?? []).filter((saved) =>
+    `${saved.title} ${saved.url} ${saved.text}`.toLocaleLowerCase(settings.interfaceLanguage)
+      .includes(query.trim().toLocaleLowerCase(settings.interfaceLanguage)));
+  const articleStats = useMemo(() => {
+    const stats = new Map<string, ReturnType<typeof articleWordStats>>();
+    for (const saved of pair.savedArticles ?? []) stats.set(saved.text, articleWordStats(saved.text, pair.words, settings.targetLanguage));
+    if (article && !stats.has(article.text)) stats.set(article.text, articleWordStats(article.text, pair.words, settings.targetLanguage));
+    return stats;
+  }, [pair.savedArticles, pair.words, article?.text, settings.targetLanguage]);
+  const counters = (text: string, inTable = false) => {
+    const stats = articleStats.get(text)!;
+    return <span className={`article-word-counts${inTable ? " article-table-counts" : ""}`}><span aria-label={inTable ? t("articleWordCount") : undefined}>{!inTable && `${t("articleWordCount")}: `}<strong>{stats.total.toLocaleString(settings.interfaceLanguage)}</strong></span><span title={t("articleLearnedHint")} aria-label={inTable ? t("articleLearnedCount") : undefined}>{!inTable && `${t("articleLearnedCount")}: `}<strong>{stats.learned.toLocaleString(settings.interfaceLanguage)}</strong></span></span>;
+  };
   return <div className="reader-view">
-    <div className="page-heading"><div><p className="eyebrow">{t("reader")}</p><h1>{t("readerTitle")}</h1><p className="subtitle">{t("readerSub")}</p></div></div>
+    <div className="page-heading"><div><p className="eyebrow">{t("articles")}</p><h1>{t("savedArticles")}</h1><p className="subtitle">{t("readerSub")}</p></div>
+      <div className="library-heading-actions"><button type="button" className="primary-button" onClick={() => { urlInput.current?.scrollIntoView({ block: "center", behavior: "instant" }); urlInput.current?.focus({ preventScroll: true }); }}><Plus size={17} />{t("addArticle")}</button></div>
+    </div>
+    <div className="library-toolbar">
+      <div className="search-field"><Search size={18} /><input aria-label={t("searchArticles")} placeholder={t("searchArticles")} value={query} onChange={(e) => setQuery(e.target.value)} /></div>
+    </div>
+    <section className="word-table panel reader-library" aria-label={t("savedArticles")}>
+      <div className="word-table-header"><span>{t("articleTitle")}</span><span>{t("articleWordCount")}</span><span>{t("articleLearnedCount")}</span><span>{t("savedOn")}</span><span /></div>
+      {savedArticles.length ? savedArticles.map((saved) => <div className="word-row" key={saved.id}>
+        <div className="article-detail"><button type="button" className="word-detail" onClick={() => load(saved)}><strong lang={settings.targetLanguage}>{saved.title}</strong>{saved.url && <span>{saved.url}</span>}</button></div>
+        {counters(saved.text, true)}
+        <span className="article-date">{new Date(saved.createdAt).toLocaleDateString(settings.interfaceLanguage)}</span>
+        <div className="row-actions"><button type="button" className="icon-button" title={t("readArticle")} aria-label={`${t("readArticle")}: ${saved.title}`} onClick={() => load(saved)}><BookOpen size={16} /></button>
+          <button type="button" className="icon-button" title={t("deleteArticle")} aria-label={`${t("deleteArticle")}: ${saved.title}`} onClick={() => update(deleteSavedArticle(pair, saved.id))}><Trash2 size={16} /></button></div>
+      </div>) : <div className="no-results"><BookOpen size={24} /><p>{t(pair.savedArticles?.length ? "noResults" : "savedArticlesEmpty")}</p></div>}
+    </section>
     <section className="panel reader-import">
       <form onSubmit={(e) => { e.preventDefault(); void importUrl(); }}>
-        <label>{t("articleUrl")}<input type="url" required maxLength={4096} value={url} placeholder="https://example.com/article" onChange={(e) => setUrl(e.target.value)} /></label>
+        <label>{t("articleUrl")}<input ref={urlInput} type="url" required maxLength={4096} value={url} placeholder="https://example.com/article" onChange={(e) => setUrl(e.target.value)} /></label>
         <button className="primary-button" disabled={busy || !url.trim()}>{busy ? t("importingArticle") : t("importArticle")}</button>
       </form>
       {error && <p role="alert" className="form-message">{t("articleError")}</p>}
-      <details open={error || undefined}><summary>{t("pasteArticle")}</summary>
+      <details open={error || pasteOpen} onToggle={(event) => setPasteOpen(event.currentTarget.open)}><summary>{t("pasteArticle")}</summary>
         <form onSubmit={(e) => {
           e.preventDefault(); importing.current?.abort(); setBusy(false);
           load({ title: pasteTitle.trim() || t("untitledArticle"), text: paste.trim(), url: "" });
@@ -364,7 +404,8 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
           </div>}
         </section>
         <article ref={body} className={`panel reader-body${picking ? " reader-picking" : ""}`} lang={article.language || settings.targetLanguage} onPointerUp={captureSelection} onKeyUp={(e) => { if (e.shiftKey) captureSelection(); }}>
-          <div className="reader-article-heading"><h2>{article.title}</h2><button type="button" className="outline-button reader-select-button" aria-pressed={picking} onClick={() => picking ? cancelPicking() : startPicking()}><ListChecks size={16} />{t("pickWords")}</button></div>
+          <div className="reader-article-heading"><h2>{article.title}</h2><button type="button" className="outline-button" aria-pressed={!!matchingSavedArticle(pair, article)} disabled={!!matchingSavedArticle(pair, article)} onClick={() => update(saveArticle(pair, article).pair)}><Bookmark size={16} />{t(matchingSavedArticle(pair, article) ? "articleSaved" : "saveArticle")}</button><button type="button" className="outline-button reader-select-button" aria-pressed={picking} onClick={() => picking ? cancelPicking() : startPicking()}><ListChecks size={16} />{t("pickWords")}</button></div>
+          {counters(article.text)}
           {paragraphs?.map(({ text, start }) => {
             let position = start;
             return <p key={start} data-offset={start}>{wordParts(text).map((part, i) => {

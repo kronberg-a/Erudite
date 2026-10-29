@@ -8,6 +8,7 @@ import {
 } from "./storage";
 import { reviewCard, DAY } from "../core/srsEngine";
 import { seedPair } from "../i18n/seedData";
+import type { SavedArticle } from "../types";
 const data = {
   version: 2 as const,
   reviewOrder: 0,
@@ -15,6 +16,21 @@ const data = {
   pairs: { "en-de": seedPair("en", "de") },
 };
 afterEach(() => vi.unstubAllGlobals());
+it("hydrates legacy omissions and round-trips saved articles in backups", () => {
+  expect(hydrateData(data).pairs["en-de"].savedArticles).toEqual([]);
+  const saved: SavedArticle = { id: "saved", title: "News", text: "Body", url: "", language: "de", createdAt: 1 };
+  const backup = { ...data, pairs: { "en-de": { ...data.pairs["en-de"], savedArticles: [saved] } } };
+  expect(validateData(backup)).toBe(true);
+  const hydrated = hydrateData(JSON.parse(JSON.stringify(backup)));
+  expect(hydrated.pairs["en-de"].savedArticles).toEqual([saved]);
+  expect(hydrated.pairs["en-de"].savedArticles![0]).not.toBe(saved);
+  for (const patch of [{ id: " " }, { title: "" }, { title: "a".repeat(301) }, { text: " " }, { text: "a".repeat(200001) }, { url: "a".repeat(4097) }, { language: "xx" }, { createdAt: Infinity }]) {
+    const invalid = { ...backup, pairs: { "en-de": { ...backup.pairs["en-de"], savedArticles: [{ ...saved, ...patch }] } } };
+    expect(validateData(invalid)).toBe(false);
+    expect(() => hydrateData(invalid)).toThrow();
+  }
+  expect(validateData({ ...backup, pairs: { "en-de": { ...backup.pairs["en-de"], savedArticles: [saved, saved] } } })).toBe(false);
+});
 function legacyBackup() {
   const statuses = ["NEW", "LEARNING", "REVIEW", "MASTERED"];
   return {

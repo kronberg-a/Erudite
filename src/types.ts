@@ -49,9 +49,18 @@ export interface DailyProgress {
   wordIds: string[];
   acknowledgedGoal: number | null;
 }
+export interface SavedArticle {
+  id: string;
+  title: string;
+  text: string;
+  url: string;
+  language?: Language;
+  createdAt: number;
+}
 export interface PairData {
   words: WordCard[];
   categories: Category[];
+  savedArticles?: SavedArticle[];
 }
 export interface AppData {
   version: 2 | 3;

@@ -2,6 +2,7 @@ import { languages } from "../types";
 import type { Language } from "../types";
 
 export const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent";
+export const GEMINI_STANDARD_TIMEOUT_MS = 30_000;
 export const GEMINI_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
 export type GeminiLevel = typeof GEMINI_LEVELS[number];
 export class GeminiAnalysisError extends Error {

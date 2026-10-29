@@ -5,6 +5,7 @@ import { canonicalizeWord } from "./article";
 import { translate } from "./translator";
 import { geminiBody, parseGeminiResult, validGeminiRequest } from "./geminiProtocol";
 import type { SelectionAnalysisResult } from "./gemini";
+import { testGeminiConnection } from "./gemini";
 
 const input = { word: "Bank", sentence: "Er saß auf der Bank im Park.", wordOffset: 15, from: "de", to: "en" } as const;
 const result: SelectionAnalysisResult = { partOfSpeech: "NOUN", canonicalWord: "die Bank", translation: "bench", alternatives: ["seat"], translatedSentence: "He sat on the bench in the park.", cefrLevel: "A2" };
@@ -84,8 +85,46 @@ describe("hybrid Gemini client", () => {
       init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
     })));
     const pending = analyzeSelectionWithGemini(input);
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(35000);
     expect(await pending).toBeUndefined();
+  });
+  it.each(["file:", "https:"])("accepts a slow Settings connection test beyond the former deadline (%s)", async (protocol) => {
+    vi.useFakeTimers();
+    vi.stubGlobal("location", { protocol });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException("Timed out", "TimeoutError")), milliseconds);
+      return controller.signal;
+    });
+    const payload = { translation: "Hallo", alternatives: [] };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_url, init) => new Promise((resolve, reject) => {
+      setTimeout(() => resolve({ ok: true, json: async () => protocol === "file:" ? upstream(payload) : payload }), 12000);
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    })));
+    const pending = testGeminiConnection();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(getGeminiConnectionState()).toBe("checking");
+    await vi.advanceTimersByTimeAsync(2000);
+    await pending;
+    expect(getGeminiConnectionState()).toBe("connected");
+  });
+  it.each([["file:", 30000], ["https:", 35000]] as const)("still ends an unresponsive connection test (%s)", async (protocol, deadline) => {
+    vi.useFakeTimers();
+    vi.stubGlobal("location", { protocol });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException("Timed out", "TimeoutError")), milliseconds);
+      return controller.signal;
+    });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    })));
+    const pending = testGeminiConnection();
+    await vi.advanceTimersByTimeAsync(deadline - 1);
+    expect(getGeminiConnectionState()).toBe("checking");
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+    expect(getGeminiConnectionState()).toBe("timeout");
   });
   it("uses only Gemini's exact CEFR offsets and omits A1 and unreturned tokens", async () => {
     const text = "Macron tests hubris airport";

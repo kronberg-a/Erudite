@@ -2281,3 +2281,30 @@ kbd {
   .session-mode-options { display: grid; width: 100%; }
   .session-mode-option span { padding: 8px; font-size: 11px; }
 }
+
+.reader-library { margin-bottom: 24px; }
+.vocabulary-table .word-table-header, .vocabulary-table .word-row { grid-template-columns: minmax(0, 1fr) 130px 150px 100px; }
+.word-review-count { color: var(--muted); font-size: 11px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.word-status-indicator { width: 10px; height: 10px; }
+@media (max-width: 767px) {
+  .vocabulary-table .word-table-header, .vocabulary-table .word-row { grid-template-columns: minmax(0, 1fr) 80px 70px 32px; gap: 6px; padding-inline: 10px; }
+  .word-review-count { font-size: 10px; }
+}
+.article-detail { min-width: 0; }
+.article-word-counts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--muted); font-size: 11px; margin-top: 8px; }
+.article-word-counts strong { color: var(--text); font-weight: 500; }
+.reader-library .word-table-header, .reader-library .word-row { grid-template-columns: minmax(0, 1fr) repeat(3, 100px) 72px; }
+.article-table-counts { display: contents; }
+.article-table-counts > span, .reader-library .article-date, .reader-library .word-table-header > span:nth-child(2), .reader-library .word-table-header > span:nth-child(3), .reader-library .word-table-header > span:nth-child(4) { text-align: center; }
+.article-table-counts strong { font-variant-numeric: tabular-nums; }
+@media (min-width: 1024px) {
+  .reader-library .word-table-header, .reader-library .word-row { column-gap: 32px; padding-inline: 28px; }
+}
+@media (max-width: 767px) {
+  .reader-library .word-table-header, .reader-library .word-row { grid-template-columns: minmax(0, 1fr) 34px 44px 64px 28px; gap: 6px; padding-inline: 10px; }
+}
+.reader-body > .article-word-counts { margin: 0 0 20px; }
+.reader-library .article-date { color: var(--muted); font-size: 11px; }
+.reader-view .search-field input { font-size: 12px; }
+.reader-article-heading { flex-wrap: wrap; }
+.reader-article-heading h2 { flex: 1 1 100%; }

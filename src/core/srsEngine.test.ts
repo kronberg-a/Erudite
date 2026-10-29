@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reviewCard, reinsertionDistance, resetCard, DAY, reviewInterval } from "./srsEngine";
+import { reviewCard, reinsertionDistance, resetCard, remainingMasteryRecalls, DAY, reviewInterval } from "./srsEngine";
 import { seedPair } from "../i18n/seedData";
 const base = seedPair("en", "de").words[0];
 const settings = { instantMasterOnFirstTry: false };
@@ -7,6 +7,32 @@ const grade = (card: typeof base, now: number, action: "know" | "repeat" = "know
   reviewCard(card, action, settings, card.repCount + 1, { now, assisted });
 function graduate() { let c = base; for (let i = 0; i < 3; i++) c = grade(c, 0); return c; }
 describe("calendar mastery with unlimited practice", () => {
+  it("counts remaining successful recalls through learning and every scheduled review", () => {
+    let card = { ...base };
+    const original = structuredClone(card);
+    expect(remainingMasteryRecalls(card)).toBe(9);
+    expect(card).toEqual(original);
+    for (let remaining = 9; remaining > 0; remaining--) {
+      card = grade(card, card.nextReviewDate ?? 0);
+      expect(remainingMasteryRecalls(card)).toBe(remaining - 1);
+    }
+    expect(card.status).toBe("MASTERED");
+  });
+  it("keeps early and assisted practice from reducing the counter and reflects failures and ease", () => {
+    const card = graduate();
+    expect(remainingMasteryRecalls(card)).toBe(6);
+    expect(remainingMasteryRecalls(grade(card, DAY - 1))).toBe(6);
+    expect(remainingMasteryRecalls(grade(card, DAY, "know", true))).toBe(6);
+    expect(remainingMasteryRecalls(grade(card, DAY))).toBe(5);
+    const failed = grade(card, DAY, "repeat");
+    expect(remainingMasteryRecalls(failed)).toBeGreaterThan(6);
+    let slow: typeof base = { ...card, easeFactor: 1.3 };
+    const remaining = remainingMasteryRecalls(slow);
+    expect(remaining).toBeGreaterThan(6);
+    for (let i = 0; i < remaining; i++) slow = grade(slow, slow.nextReviewDate!);
+    expect(slow.status).toBe("MASTERED");
+    expect(remainingMasteryRecalls({ ...card, interval: 90 })).toBe(1);
+  });
   it("requires three learning recalls when instant mastery is disabled", () => {
     let c = base;
     for (let step = 1; step <= 3; step++) {

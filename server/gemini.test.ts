@@ -20,10 +20,12 @@ function response() {
 }
 it("uses the server key without returning it and forces the fixed model/schema", async () => {
   vi.stubEnv("GEMINI_API_KEY", "server-test-secret");
+  const timer = vi.spyOn(globalThis, "setTimeout");
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: '{"translation":"Hello","alternatives":[]}' }] } }] }) });
   vi.stubGlobal("fetch", fetchMock);
   const res = response(); await geminiHandler(request(), res);
   expect(res.writeHead).toHaveBeenCalledWith(200);
+  expect(timer).toHaveBeenCalledWith(expect.any(Function), 30000);
   expect(res.end).toHaveBeenCalledWith(JSON.stringify({ translation: "Hello", alternatives: [] }));
   const [url, init] = fetchMock.mock.calls[0];
   expect(url).toContain("gemini-3.5-flash-lite:generateContent");

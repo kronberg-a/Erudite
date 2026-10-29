@@ -17,6 +17,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 27, 12));
   localStorage.clear();
+  sessionStorage.clear();
   const pair = seedPair("en", "de");
   pair.words = pair.words.slice(0, 3);
   const data: AppData = {

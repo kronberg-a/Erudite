@@ -15,6 +15,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
   localStorage.clear();
+  sessionStorage.clear();
   HTMLDialogElement.prototype.close = vi.fn();
   HTMLDialogElement.prototype.showModal = vi.fn();
   const pair = seedPair("en", "de");
@@ -85,6 +86,29 @@ function fill(input: HTMLInputElement, value: string) {
   });
 }
 describe("new and reset word practice", () => {
+  it("shows each vocabulary word's status and remaining mastery recalls and updates after reset", async () => {
+    const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
+    stored.pairs["en-de"].words.push({ ...stored.pairs["en-de"].words[2], id: "learning", targetWord: "Learning word", status: "LEARNING", step: 2 });
+    localStorage.setItem("erudite:v3", JSON.stringify(stored));
+    await renderApp(); clickText("Vocabulary");
+    const rows = () => Array.from(container.querySelectorAll('.vocabulary-table .word-row'));
+    expect(rows()).toHaveLength(4);
+    const mastered = rows().find((row) => row.textContent?.includes("Reset me"))!;
+    expect(mastered.querySelector('.word-status-indicator.green')!.getAttribute("aria-label")).toBe("Memorized");
+    expect(mastered.querySelector('.word-review-count')!.textContent).toBe("0 recalls left");
+    const unseen = rows().find((row) => row.textContent?.includes("Older new word"))!;
+    expect(unseen.querySelector('.word-review-count')!.textContent).toBe("9 recalls left");
+    const review = rows().find((row) => row.querySelector('[data-status="review"]'))!;
+    expect(review.querySelector('.word-status-indicator.amber')!.getAttribute("aria-label")).toBe("Scheduled review");
+    expect(review.querySelector('.word-review-count')!.textContent).toBe("6 scheduled reviews left");
+    const learning = rows().find((row) => row.textContent?.includes("Learning word"))!;
+    expect(learning.querySelector('.word-status-indicator.amber')!.getAttribute("title")).toBe("Learning 2/3");
+    expect(learning.querySelector('.word-review-count')!.textContent).toBe("7 recalls left");
+    clickLabel("Reset progress: Reset me");
+    const reset = rows().find((row) => row.textContent?.includes("Reset me"))!;
+    expect(reset.querySelector('.word-status-indicator.blue')!.getAttribute("aria-label")).toBe("New words");
+    expect(reset.querySelector('.word-review-count')!.textContent).toBe("9 recalls left");
+  });
   it("persists instant mastery and excludes newly mastered words from regular sessions after reload", async () => {
     await renderApp();
     clickText("Settings");
@@ -101,6 +125,8 @@ describe("new and reset word practice", () => {
     vi.resetModules();
     await renderApp();
     expect(JSON.parse(localStorage.getItem("erudite:v3")!).settings.instantMasterOnFirstTry).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[name="session-mode"]:checked')?.value).toBe("new");
+    act(() => container.querySelector<HTMLInputElement>('input[name="session-mode"][value="mixed"]')!.click());
     clickText("Start practice");
     expect(container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuemax")).toBe("1");
     expect(container.querySelector("article")?.textContent).not.toContain("Older new word");

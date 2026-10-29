@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -27,17 +27,21 @@ import { CategoryView } from "./components/CategoryView";
 import { SettingsView } from "./components/SettingsView";
 import { ReaderView } from "./components/ReaderView";
 import { configureGemini, initializeGemini } from "./services/gemini";
+import { UiStateScope, clearPairUiState, readUiState, uiCount, uiObject, useStoredUiState, writeUiState } from "./hooks/useUiState";
 type Page = "learn" | "categories" | "reader" | "settings";
 const initial = loadData();
 export default function App() {
   const [data, setData] = useState<AppData>(initial.data);
   const [storageError, setStorageError] = useState(initial.error);
-  const [page, setPage] = useState<Page>("learn");
+  const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings"].includes(value as string));
   const [generation, setGeneration] = useState(0);
-  const [practiceRequest, setPracticeRequest] = useState<{
+  const [practiceRequest, setPracticeRequest] = useStoredUiState<{
     pairKey: string;
     selection: StudySelection;
-  } | null>(null);
+  } | null>("practice", null, (value) => value === null || (uiObject(value) && typeof value.pairKey === "string" && uiObject(value.selection) &&
+    ((["word", "category"].includes(value.selection.kind as string) && typeof value.selection.id === "string") ||
+      (value.selection.kind === "categories" && Array.isArray(value.selection.ids) && value.selection.ids.every((id) => typeof id === "string")))));
+  const main = useRef<HTMLElement | null>(null);
   const s = data.settings;
   useEffect(() => {
     configureGemini(s.geminiApiKey);
@@ -46,6 +50,18 @@ export default function App() {
   const t = translator(s.interfaceLanguage);
   const key = pairKey(s.sourceLanguage, s.targetLanguage);
   const pair = data.pairs[key] ?? seedPair(s.sourceLanguage, s.targetLanguage);
+  useLayoutEffect(() => {
+    const scrollKey = `pair:${key}:scroll:${page}`;
+    const position = readUiState(scrollKey, { document: 0, main: 0 }, (value) => uiObject(value) && uiCount(value.document) && uiCount(value.main));
+    const documentScroller = document.scrollingElement ?? document.documentElement;
+    const mainScroller = main.current;
+    documentScroller.scrollTop = position.document;
+    if (mainScroller) mainScroller.scrollTop = position.main;
+    const savePosition = () => writeUiState(scrollKey, { document: Math.round(documentScroller.scrollTop), main: Math.round(mainScroller?.scrollTop ?? 0) });
+    window.addEventListener("scroll", savePosition, true);
+    window.addEventListener("pagehide", savePosition);
+    return () => { savePosition(); window.removeEventListener("scroll", savePosition, true); window.removeEventListener("pagehide", savePosition); };
+  }, [key, page, generation]);
   useEffect(() => {
     if (initial.error && data === initial.data) return;
     setStorageError(!saveData(data));
@@ -122,7 +138,7 @@ export default function App() {
               onClick={() => navigate(id)}
             >
               <Icon size={19} />
-              <span>{t(id)}</span>
+              <span>{t(id === "reader" ? "articles" : id)}</span>
               {page === id && <span className="nav-active-mark" />}
             </button>
           ))}
@@ -193,6 +209,7 @@ export default function App() {
           </div>
         </header>
         <main
+          ref={main}
           key={`${key}-${generation}`}
           className={`main-content page-${page}`}
         >
@@ -201,6 +218,7 @@ export default function App() {
               {t("storageError")}
             </div>
           )}
+          <UiStateScope.Provider value={`pair:${key}`}>
           {page === "learn" && (
             <StudyView
               key={JSON.stringify(
@@ -236,6 +254,7 @@ export default function App() {
               data={data}
               changeSettings={changeSettings}
               restore={(d) => {
+                clearPairUiState();
                 setData(d);
                 setPracticeRequest(null);
                 setGeneration((n) => n + 1);
@@ -244,6 +263,7 @@ export default function App() {
             />
           )}
           {page === "reader" && <ReaderView pair={pair} settings={s} update={update} onPractice={practice} t={t} />}
+          </UiStateScope.Provider>
         </main>
         <footer className="desktop-footer">
           <span>ERUDITE</span>
@@ -263,7 +283,7 @@ export default function App() {
             onClick={() => navigate(id)}
           >
             <Icon size={21} />
-            <span>{t(id)}</span>
+            <span>{t(id === "reader" ? "articles" : id)}</span>
           </button>
         ))}
       </nav>

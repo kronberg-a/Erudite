@@ -45,6 +45,87 @@ function paste(text = "Hallo Welt. Eine neue Sprache.") {
   const form = container.querySelector("details form")!;
   act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 }
+function renderLibrary(key?: string) {
+  act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: key }} update={update} onPractice={practice} t={translator("en")} />));
+}
+it("saves, reopens through the full reader pipeline, collects vocabulary and deletes", async () => {
+  renderLibrary("library-key");
+  paste("Hallo Welt."); click("Save article");
+  pair = update.mock.calls[0][0]; renderLibrary("library-key");
+  expect(container.querySelector(".reader-library")!.textContent).toContain("News");
+  expect(container.querySelector<HTMLButtonElement>(".reader-article-heading button")!.disabled).toBe(true);
+  paste("Other text.");
+  act(() => container.querySelector<HTMLButtonElement>('[aria-label="Read: News"]')!.click());
+  expect(container.querySelector(".reader-body")!.textContent).toContain("Hallo Welt.");
+  const fetchMock = vi.fn().mockImplementation(async (_url, init) => {
+    const request = JSON.parse(init.body);
+    return { ok: true, json: async () => request.operation === "cefr" ? { tokens: [{ offset: 0, word: "Hallo", level: "A2" }] } : {
+      partOfSpeech: "OTHER", canonicalWord: "Hallo", translation: "hello", alternatives: [], translatedSentence: "Hello world.",
+    } };
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  await act(async () => click("A2"));
+  expect(container.querySelector('.reader-word[data-cefr="A2"]')!.textContent).toBe("Hallo");
+  await act(async () => click("Hallo"));
+  expect(container.querySelector(".reader-translation-popup")!.textContent).toContain("Hello world.");
+  click("Add to list"); click("Save collected words");
+  pair = update.mock.lastCall![0]; renderLibrary("library-key");
+  expect(pair.savedArticles).toHaveLength(1);
+  expect(pair.words[0].examples[0].translatedSentence).toBe("Hello world.");
+  click("Practice folder"); expect(practice).toHaveBeenCalled();
+  act(() => container.querySelector<HTMLButtonElement>('[aria-label="Delete article: News"]')!.click());
+  pair = update.mock.lastCall![0]; renderLibrary("library-key");
+  expect(container.querySelector(".reader-library")!.textContent).not.toContain("News");
+  expect(container.querySelector(".reader-body")!.textContent).toContain("Hallo Welt.");
+  expect(container.querySelector(".reader-article-heading")!.textContent).toContain("Save article");
+});
+it("filters the saved library by title, source and content, and opens a matching article", () => {
+  pair = { ...pair, savedArticles: [
+    { id: "one", title: "Travel", text: "Hallo Welt.", url: "https://example.com/travel", createdAt: 1 },
+    { id: "two", title: "Science", text: "Forschung heute.", url: "https://journal.example/science", createdAt: 2 },
+  ] };
+  renderLibrary();
+  fill('.search-field input', "SCIENCE");
+  expect(container.querySelectorAll('.reader-library .word-row')).toHaveLength(1);
+  expect(container.querySelector('.reader-library .word-row')!.textContent).toContain("Science");
+  fill('.search-field input', "journal.example");
+  expect(container.querySelectorAll('.reader-library .word-row')).toHaveLength(1);
+  fill('.search-field input', "Forschung");
+  act(() => container.querySelector<HTMLButtonElement>('.reader-library .word-detail')!.click());
+  expect(container.querySelector('.reader-body h2')!.textContent).toBe("Science");
+  fill('.search-field input', "no matching article");
+  expect(container.querySelector('.reader-library .no-results')!.textContent).toBe(translator("en")("noResults"));
+  fill('.search-field input', "");
+  expect(container.querySelectorAll('.reader-library .word-row')).toHaveLength(2);
+});
+it("shows article counters in the library and reader and updates learned totals after progress changes", () => {
+  const text = "Hallo Welt. Hallo.";
+  pair = { ...pair, savedArticles: [{ id: "counted", title: "News", text, url: "", createdAt: 1 }], words: [{
+    id: "hello", targetWord: "Hallo", translations: ["hello"], examples: [], categoryIds: [],
+    status: "REVIEW", step: 3, repCount: 3, lastReviewedOrder: 3, createdAt: 1,
+  }] };
+  renderLibrary(); paste(text);
+  const counts = () => Array.from(container.querySelectorAll('.article-word-counts')).map((element) =>
+    Array.from(element.querySelectorAll('strong')).map((count) => count.textContent));
+  expect(counts()).toEqual([["3", "0"], ["3", "0"]]);
+  pair = { ...pair, words: pair.words.map((word) => ({ ...word, status: "MASTERED", step: 5 })) };
+  renderLibrary();
+  expect(counts()).toEqual([["3", "1"], ["3", "1"]]);
+  pair = { ...pair, words: pair.words.map((word) => ({ ...word, status: "NEW", step: 0 })) };
+  renderLibrary();
+  expect(counts()).toEqual([["3", "0"], ["3", "0"]]);
+});
+it("discards extraction responses after a saved article replaces the pending import", async () => {
+  pair = { ...pair, savedArticles: [{ id: "saved", title: "Saved title", text: "Hallo Welt.", url: "", createdAt: 1 }] };
+  renderLibrary("pending-key");
+  let finish!: (response: unknown) => void;
+  const fetchMock = vi.fn().mockReturnValue(new Promise((resolve) => { finish = resolve; })); vi.stubGlobal("fetch", fetchMock);
+  fill('input[type="url"]', "https://example.com/late"); click("Import article");
+  act(() => container.querySelector<HTMLButtonElement>('[aria-label="Read: Saved title"]')!.click());
+  expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+  await act(async () => finish({ ok: true, json: async () => ({ title: "Late", text: "Late text.", url: "https://example.com/late" }) }));
+  expect(container.querySelector(".reader-body h2")!.textContent).toBe("Saved title");
+});
 it("uses one contextual Gemini request for a normalized popup and its saved sentence", async () => {
   act(() => root.render(<ReaderView pair={pair} settings={{ ...defaultSettings, geminiApiKey: "reader-test-key" }} update={update} onPractice={practice} t={translator("en")} />));
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
@@ -207,7 +288,7 @@ it("cancels superseded previews and replaced articles and allows manual recovery
 it("offers the paste fallback when URL import fails", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
   fill('input[type="url"]', "https://example.com/blocked");
-  await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => container.querySelector(".reader-import form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(container.querySelector('[role="alert"]')!.textContent).toContain("paste box");
   expect(container.querySelector("details")!.open).toBe(true);
 });

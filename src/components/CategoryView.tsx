@@ -19,8 +19,9 @@ import type {
 } from "../types";
 import { languages } from "../types";
 import type { T } from "../i18n/translations";
-import { resetCard } from "../core/srsEngine";
+import { remainingMasteryRecalls, resetCard } from "../core/srsEngine";
 import { WordForm } from "./WordForm";
+import { uiString, useUiState } from "../hooks/useUiState";
 export function CategoryView({
   pair,
   settings,
@@ -34,8 +35,8 @@ export function CategoryView({
   t: T;
   onPractice: (selection: StudySelection) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState("all");
+  const [query, setQuery] = useUiState("vocabulary:query", "", uiString);
+  const [selected, setSelected] = useUiState("vocabulary:folder", "all", (value) => value === "all" || pair.categories.some((category) => category.id === value));
   const [folderName, setFolderName] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WordCard | null>(null);
@@ -61,6 +62,9 @@ export function CategoryView({
       ...pair,
       words: pair.words.map((w) => (w.id === card.id ? card : w)),
     });
+  const statusLabel = (word: WordCard) => t(word.status === "NEW" ? "new"
+    : word.status === "LEARNING" ? "learning" : word.status === "REVIEW" ? "scheduledReview" : "mastered")
+    + (word.status === "LEARNING" ? ` ${word.step}/3` : "");
   return (
     <>
       <div className="page-heading">
@@ -254,12 +258,13 @@ export function CategoryView({
           ))}
         </select>
       </div>
-      <div className="word-table panel">
+      <div className="word-table panel vocabulary-table">
         <div className="word-table-header">
           <span>
             {t("word")} / {t("translation")}
           </span>
           <span>{t("status")}</span>
+          <span title={t("masteryRemainingHint")}>{t("recallsRemaining")}</span>
           <span />
         </div>
         {filtered.length ? (
@@ -271,16 +276,11 @@ export function CategoryView({
                   {w.translations.join("; ")}
                 </span>
               </button>
-              <span className={`status-pill ${w.status.toLowerCase()}`}>
-                {t(
-                  w.status === "NEW"
-                    ? "new"
-                    : w.status === "LEARNING"
-                      ? "learning"
-                      : w.status === "REVIEW"
-                        ? "review"
-                        : "mastered",
-                )}
+              <span className={`stat-dot word-status-indicator ${w.status === "NEW" ? "blue" : w.status === "MASTERED" ? "green" : "amber"}`}
+                role="img" aria-label={statusLabel(w)} title={statusLabel(w)} data-status={w.status.toLowerCase()} />
+              <span className="word-review-count" title={t("masteryRemainingHint")}>
+                {t(w.status === "REVIEW" ? "scheduledReviewsRemaining" : "masteryRecallsRemaining")
+                  .replace("{count}", remainingMasteryRecalls(w).toLocaleString(settings.interfaceLanguage))}
               </span>
               <div className="row-actions">
                 <button

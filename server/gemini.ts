@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { GEMINI_ENDPOINT, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "../src/services/geminiProtocol";
+import { GEMINI_ENDPOINT, GEMINI_STANDARD_TIMEOUT_MS, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "../src/services/geminiProtocol";
 
 export async function geminiHandler(req: IncomingMessage, res: ServerResponse) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -33,7 +33,7 @@ export async function geminiHandler(req: IncomingMessage, res: ServerResponse) {
     const request: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (!validGeminiRequest(request)) { end(400, { error: "Invalid Gemini request" }); return; }
     clearTimeout(deadline);
-    deadline = setTimeout(disconnect, request.operation === "cefr" ? 50000 : 10000);
+    deadline = setTimeout(disconnect, request.operation === "cefr" ? 50000 : GEMINI_STANDARD_TIMEOUT_MS);
     const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(geminiBody(request)), signal: controller.signal,

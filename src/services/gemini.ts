@@ -1,6 +1,6 @@
 import type { Language } from "../types";
 import { wordParts } from "./article";
-import { GEMINI_ENDPOINT, GeminiAnalysisError, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "./geminiProtocol";
+import { GEMINI_ENDPOINT, GEMINI_STANDARD_TIMEOUT_MS, GeminiAnalysisError, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "./geminiProtocol";
 import type { GeminiRequest, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
 export type { SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
 
@@ -58,7 +58,9 @@ async function requestGemini(request: GeminiRequest, signal?: AbortSignal, apiKe
   const cacheKey = JSON.stringify(request);
   const cached = cache.get(cacheKey);
   if (cached && !force) return structuredClone(cached);
-  const combined = AbortSignal.any([AbortSignal.timeout(request.operation === "cefr" ? 45000 : 8000), ...(signal ? [signal] : [])]);
+  // Give the proxy time to return its upstream error before the browser aborts.
+  const timeout = request.operation === "cefr" ? 45000 : GEMINI_STANDARD_TIMEOUT_MS + (file ? 0 : 5000);
+  const combined = AbortSignal.any([AbortSignal.timeout(timeout), ...(signal ? [signal] : [])]);
   const direct = () => fetch(GEMINI_ENDPOINT, {
     method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify(geminiBody(request)), signal: combined,
