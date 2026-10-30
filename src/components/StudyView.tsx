@@ -4,8 +4,12 @@ import {
   ArrowRight,
   ArrowUp,
   BookOpen,
+  Eye,
+  Keyboard,
+  Grid2X2,
   Check,
   RotateCcw,
+  MoreHorizontal,
   Volume2,
 } from "lucide-react";
 import type {
@@ -34,6 +38,7 @@ import { TypingCard } from "./TypingCard";
 import { localDate, recordRecall, todayProgress } from "../core/dailyGoal";
 import { readUiState, uiBoolean, uiCount, uiObject, useUiKey, writeUiState } from "../hooks/useUiState";
 import { validateData } from "../services/storage";
+import { usePracticeViewport } from "../hooks/usePracticeViewport";
 interface Props {
   pair: PairData;
   settings: Settings;
@@ -60,7 +65,7 @@ interface StudySnapshot {
   pairSignature: string;
   reviewOrder: number; mode: Mode; queue: string[]; started: boolean; completed: number;
   initialSessionCount: number; history: Undo[]; revealed: boolean; evaluation: Evaluation | null;
-  typingInput: TypingInput; turn: number;
+  typingInput: TypingInput; inputPractice?: boolean; turn: number;
 }
 export function StudyView({
   pair,
@@ -86,7 +91,7 @@ export function StudyView({
       validQueue(value.queue) && uiBoolean(value.started) && (!value.started || (value.queue as string[]).length > 0) &&
       uiCount(value.completed) && uiCount(value.initialSessionCount) && uiCount(value.turn) && uiBoolean(value.revealed) &&
       (value.evaluation === null || ["CORRECT", "ASSISTED", "INCORRECT"].includes(value.evaluation as string)) &&
-      ["KEYBOARD", "TILES"].includes(value.typingInput as string) && Array.isArray(value.history) && value.history.length <= 10000 &&
+      (value.inputPractice === undefined || uiBoolean(value.inputPractice)) && ["KEYBOARD", "TILES"].includes(value.typingInput as string) && Array.isArray(value.history) && value.history.length <= 10000 &&
       value.history.every((item) => uiObject(item) && typeof item.cardId === "string" && uiObject(item.previousCardState) &&
         item.previousCardState.id === item.cardId && validQueue(item.queue) && uiCount(item.previousQueueIndex) &&
         uiCount(item.reviewOrder) && validMode(item.mode) && uiCount(item.completed) && uiCount(item.initialSessionCount) &&
@@ -101,6 +106,7 @@ export function StudyView({
   );
   const [queue, setQueue] = useState<string[]>(resume?.queue ?? []);
   const [started, setStarted] = useState(resume?.started ?? false);
+  const keyboardOpen = usePracticeViewport(true);
   const [completed, setCompleted] = useState(resume?.completed ?? 0);
   const [initialSessionCount, setInitialSessionCount] = useState(resume?.initialSessionCount ?? 0);
   const [history, setHistory] = useState<Undo[]>(resume?.history ?? []);
@@ -110,14 +116,16 @@ export function StudyView({
   const [audioError, setAudioError] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(resume?.evaluation ?? null);
   const [typingInput, setTypingInput] = useState<TypingInput>(resume?.typingInput ?? "KEYBOARD");
+  const [inputPractice, setInputPractice] = useState(resume?.inputPractice === true);
   const [turn, setTurn] = useState(resume?.turn ?? 0);
   const gradeButton = useRef<HTMLButtonElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
+  const assistedTurn = useRef(false);
   const evaluated = useRef(!!resume?.evaluation);
   const committedTurn = useRef(-1);
   useEffect(() => {
-    writeUiState(snapshotKey, { sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, turn });
-  }, [snapshotKey, sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, turn]);
+    writeUiState(snapshotKey, { sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, inputPractice, turn });
+  }, [snapshotKey, sessionId, pairSignature, reviewOrder, mode, queue, started, completed, initialSessionCount, history, revealed, evaluation, typingInput, inputPractice, turn]);
   const available = buildStudyQueue(pair, mode, selection);
   const inProgress = buildStudyQueue(pair, "review", selection).length;
   const fresh = buildStudyQueue(pair, "new", selection).length;
@@ -141,7 +149,7 @@ export function StudyView({
   const resolvedCount = Math.max(0, initialSessionCount - queue.length);
   const total = Math.max(initialSessionCount, queue.length + resolvedCount);
   const card = pair.words.find((w) => w.id === queue[0]);
-  const typing = !!card && needsTyping(card, settings.studyMode);
+  const typing = !!card && (inputPractice || needsTyping(card, settings.studyMode));
   const firstEncounter = card?.status === "NEW" && card.repCount === 0;
   const repeatLabel = firstEncounter ? "dontKnow" : "repeat";
   const knowLabel = firstEncounter ? "alreadyKnow" : "know";
@@ -165,6 +173,8 @@ export function StudyView({
     if (goalReached) goalButton.current?.focus({ preventScroll: true });
   }, [goalReached]);
   const resetTurn = () => {
+    assistedTurn.current = false;
+    setInputPractice(false);
     setEvaluation(null);
     evaluated.current = false;
     setTurn((n) => n + 1);
@@ -174,6 +184,7 @@ export function StudyView({
   useEffect(() => {
     if (evaluation) gradeButton.current?.focus({ preventScroll: true });
   }, [evaluation]);
+  const cardStatusLabel = card ? t(card.status === "NEW" ? "new" : card.status === "LEARNING" ? "learning" : card.status === "MASTERED" ? "mastered" : "review") + (card.status === "LEARNING" ? ` ${card.step}/3` : "") : "";
   const category =
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
   const start = () => {
@@ -189,12 +200,12 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed))
+    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed && a === "master"))
       return;
     committedTurn.current = turn;
     setLastAction(a);
     setReverse(false);
-    const assisted = a !== "master" && typing && evaluation === "ASSISTED";
+    const assisted = a !== "master" && typing && (evaluation === "ASSISTED" || (!revealed && assistedTurn.current));
     const updated = reviewCard(card, a, settings, reviewOrder + 1, {
       assisted,
     });
@@ -291,14 +302,17 @@ export function StudyView({
     setHistory([]);
     resetTurn();
   };
+  const endSession = () => {
+    setStarted(false); setCompleted(0); setInitialSessionCount(0); setQueue([]); setHistory([]);
+  };
   return (
-    <>
+    <div className="study-view" data-active={started} data-keyboard={keyboardOpen}>
       {!started && (
         <div className="page-heading">
           <div>
             <p className="eyebrow">{t("learn")}</p>
-            <h1>{t("study")}</h1>
-            <p className="subtitle">{t("masteryRoute")}</p>
+            <h1 title={t("masteryRoute")}>{t("study")}</h1>
+            <p className="subtitle">{t("studySub")}</p>
           </div>
         </div>
       )}
@@ -343,12 +357,13 @@ export function StudyView({
         )}
         <div className="session-bar">
           <button
-            className="text-button"
+            className="icon-button"
+            aria-label={t("undo")}
+            title={t("undo")}
             disabled={!history.length}
             onClick={undo}
           >
             <RotateCcw size={15} />
-            {t("undo")}
           </button>
           {sessionVisible ? (
             <div className="session-composition">
@@ -371,6 +386,7 @@ export function StudyView({
             {goal != null && <span className="session-goal" aria-label={`${t("dailyGoal")}: ${progress.wordIds.length} / ${goal}`} title={t("dailyGoal")}>
               <span className="sr-only">{t("dailyGoal")}: </span>{progress.wordIds.length}/{goal}
             </span>}
+            {started && !goalReached && <button className="end-session" onClick={endSession}>{t("end")}</button>}
           </span>
         </div>
         {sessionVisible && <div className="progress-track" role="progressbar" aria-label={t("sessionResolved")} aria-valuemin={0} aria-valuemax={total} aria-valuenow={resolvedCount}>
@@ -380,11 +396,13 @@ export function StudyView({
         </div>}
         {goalReached ? (
           <div className="session-empty daily-goal-card" role="region" aria-labelledby="daily-goal-title">
+            <div className="goal-copy">
             <div className="empty-icon goal-check" aria-hidden="true"><Check size={28} /></div>
             <p className="eyebrow">{t("dailyGoal")}</p>
             <h2 id="daily-goal-title">{t("goalReached")}</h2>
             <p>{t("goalCongratulations")}</p>
             <strong className="goal-total">{progress.wordIds.length} / {goal}</strong>
+            </div>
             <div className="goal-actions">
               <button ref={goalButton} className="primary-button" onClick={() => update(pair, reviewOrder, { ...progress, acknowledgedGoal: goal })}>
                 {t("continueStudy")}<ArrowRight size={17} />
@@ -408,7 +426,7 @@ export function StudyView({
                 {...handlers}
                 className={`flashcard ${lastAction ? "advance-" + lastAction : ""} ${typing ? "typing-flashcard" : ""} ${evaluation ? `grade-${evaluation.toLowerCase()}` : ""} ${revealed ? "revealed" : ""} ${reverse ? "reverse" : ""} ${drag.active ? "dragging" : ""}`}
                 aria-label={
-                  typing && !revealed
+                  !revealed
                     ? `${card.translations.join(" · ")}. ${t("typePrompt")}`
                     : `${card.targetWord}. ${t(typing && revealed ? "next" : "tap")}`
                 }
@@ -422,10 +440,11 @@ export function StudyView({
                 }}
               >
                 <div className="card-top">
-                  <span className="category-tag">
-                    {category?.name[settings.interfaceLanguage]}
-                  </span>
-                  <span className="card-status">
+                  <details className="card-menu" onClick={(event) => event.stopPropagation()}>
+                    <summary aria-label={t("settings")}><MoreHorizontal size={22} /></summary>
+                    <div className="card-menu-content">
+                  <div className="card-meta">
+                  <span className="card-status" title={card.status === "REVIEW" && card.nextReviewDate ? `${t("scheduledReview")}: ${new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}` : undefined}>
                     {t(
                       card.status === "NEW"
                         ? "new"
@@ -434,8 +453,19 @@ export function StudyView({
                           : card.status === "MASTERED" ? "mastered" : "review",
                     )}
                     {card.status === "LEARNING" ? ` ${card.step}/3` : ""}
-                    {card.status === "REVIEW" && card.nextReviewDate ? ` · ${t("scheduledReview")}: ${new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}` : ""}
                   </span>
+                  <span className="category-tag" title={category?.name[settings.interfaceLanguage]}>
+                    {category?.name[settings.interfaceLanguage]}
+                  </span>
+                  </div>
+
+                      {(!typing || revealed) && (<button className="master-button" aria-label={t("master")} onClick={() => action("master")}>
+                  <ArrowUp size={15} /> <span>{t("master")}</span>
+                </button>)}
+                      <span>{t("review")}: {card.repCount}</span>
+                      {!!card.nextReviewDate && <span>{t("scheduledReview")}: {new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}</span>}
+                    </div>
+                  </details>
                 </div>
                 <span
                   aria-hidden="true"
@@ -448,6 +478,7 @@ export function StudyView({
                 </span>
                 {typing ? (
                   <TypingCard
+                    startWithInput={inputPractice}
                     key={turn}
                     resumeTurn={`${snapshotKey}:${sessionId}:${card.id}:${turn}`}
                     card={card}
@@ -456,6 +487,7 @@ export function StudyView({
                     onInputModeChange={setTypingInput}
                     evaluation={evaluation}
                     onEvaluate={evaluate}
+                    onAssistance={() => { assistedTurn.current = true; }}
                     onListen={() =>
                       setAudioError(
                         !speak(card.targetWord, settings.targetLanguage),
@@ -465,85 +497,52 @@ export function StudyView({
                     t={t}
                   />
                 ) : (
-                  <>
-                    <div className="card-prompt">
-                      <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
-                      {card.transcription && (
-                        <p className="transcription">{card.transcription}</p>
-                      )}
-                      <button
-                        className="audio-button"
-                        aria-label={t("listen")}
-                        title={t("listen")}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAudioError(
-                            !speak(card.targetWord, settings.targetLanguage),
-                          );
-                        }}
-                      >
-                        <Volume2 size={20} />
-                      </button>
-                      {audioError && (
-                        <small role="status">{t("audioError")}</small>
-                      )}
+                  <div className="card-body">
+                    <div className="card-source-prompt">
+                      <h2 lang={settings.sourceLanguage}>{card.translations.join(" · ")}</h2>
                     </div>
                     {revealed ? (
                       <div className="card-answer">
-                        <p
-                          lang={settings.sourceLanguage}
-                          className="translation-text"
-                        >
-                          {card.translations.join(" · ")}
-                        </p>
-                        {card.examples.length > 0 && (
-                          <div className="context">
-                            <span className="eyebrow">{t("example")}</span>
-                            {card.examples.map((e, i) => (
-                              <div key={i}>
-                                <p lang={settings.targetLanguage}>
-                                  {e.targetSentence}
-                                </p>
-                                <p
-                                  lang={settings.sourceLanguage}
-                                  className="muted"
-                                >
-                                  {e.translatedSentence}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="card-prompt">
+                          <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
+                          {card.transcription && <p className="transcription">{card.transcription}</p>}
+                          <button className="audio-button" aria-label={t("listen")} onClick={(event) => {
+                            event.stopPropagation();
+                            setAudioError(!speak(card.targetWord, settings.targetLanguage));
+                          }}><Volume2 size={18} /></button>
+                          {audioError && <small role="status">{t("audioError")}</small>}
+                        </div>
                       </div>
                     ) : (
-                      <div className="tap-hint">
-                        <span className="small-line" />
-                        {t("tap")}
-                        <kbd>Space</kbd>
+                      <div className="recall-choices">
+                        <button aria-label={t("keyboard")} title={t("keyboard")} onClick={(event) => { event.stopPropagation(); setTypingInput("KEYBOARD"); setInputPractice(true); }}><Keyboard size={22} /></button>
+                        <button aria-label={t("reveal")} title={t("reveal")} onClick={(event) => { event.stopPropagation(); reveal(); }}><Eye size={22} /></button>
+                        <button aria-label={t("tiles")} title={t("tiles")} onClick={(event) => { event.stopPropagation(); setTypingInput("TILES"); setInputPractice(true); }}><Grid2X2 size={22} /></button>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
+                <div className="card-status-marker">
+                  <span
+                    className={`stat-dot ${card.status === "NEW" ? "blue" : card.status === "MASTERED" ? "green" : "amber"}`}
+                    role="img"
+                    aria-label={cardStatusLabel}
+                    title={cardStatusLabel}
+                  />
+                </div>
               </article>
             </div>
-            {(!typing || revealed) && (
+            <div className={`action-dock ${typing ? "typing-actions" : ""}`} role="group">
               <div className={`action-bar ${typing ? "typing-actions" : ""}`}>
                 <button
-                  ref={typing && evaluation !== "CORRECT" ? gradeButton : undefined}
-                  className={`action-repeat ${typing && evaluation !== "CORRECT" ? "preselected" : ""}`}
+                  ref={typing && evaluation && evaluation !== "CORRECT" ? gradeButton : undefined}
+                  className={`action-repeat ${typing && evaluation && evaluation !== "CORRECT" ? "preselected" : ""}`}
                   onClick={() => action("repeat")}
                 >
                   <ArrowLeft size={18} />
                   <span>{t(repeatLabel)}</span>
                 </button>
-                {!typing && <button
-                  className="action-reveal"
-                  disabled={revealed}
-                  onClick={reveal}
-                >
-                  <BookOpen size={18} />
-                  <span>{t("reveal")}</span>
-                </button>}
+
                 <button
                   ref={typing && evaluation === "CORRECT" ? gradeButton : undefined}
                   className={`action-know ${typing && evaluation === "CORRECT" ? "preselected" : ""}`}
@@ -553,15 +552,14 @@ export function StudyView({
                   <ArrowRight size={18} />
                 </button>
               </div>
-            )}
-            {(!typing || revealed) && (
-              <button className="master-button" onClick={() => action("master")}>
-                <ArrowUp size={15} /> {t("master")}
-              </button>
-            )}
+
+              </div>
+
+
           </>
         ) : (
           <div className="session-empty">
+            <div className="setup-copy">
             <div className="empty-icon">
               {sessionComplete ? <Check size={28} /> : <BookOpen size={28} />}
             </div>
@@ -573,6 +571,7 @@ export function StudyView({
                   ? `${available.length} ${t("remaining")}. ${t("studySub")}`
                   : t(pool.length && mastered === pool.length ? "completeSub" : pool.length ? "emptyMode" : "empty")}
             </p>
+            </div>
             <button
               className="primary-button"
               onClick={available.length ? start : pool.length ? undefined : openLibrary}
@@ -608,21 +607,7 @@ export function StudyView({
             </span>
           </div>
         )}
-        {started && !goalReached && card && (
-          <button
-            className="end-session"
-            onClick={() => {
-              setStarted(false);
-              setCompleted(0);
-              setInitialSessionCount(0);
-              setQueue([]);
-              setHistory([]);
-            }}
-          >
-            {t("end")}
-          </button>
-        )}
       </section>
-    </>
+    </div>
   );
 }

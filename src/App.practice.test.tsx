@@ -140,7 +140,7 @@ describe("new and reset word practice", () => {
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Practice: Core vocabulary"]')?.disabled).toBe(true);
     clickLabel("Practice: Reset me");
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
+    expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     clickText("I know");
     expect(container.textContent).toContain("Session complete.");
   });
@@ -153,7 +153,7 @@ describe("new and reset word practice", () => {
     expect(container.querySelector('.session-folders')).toBeNull();
     act(() => container.querySelector<HTMLInputElement>('input[name="session-mode"][value="new"]')!.click());
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Older new word");
+    expect(container.querySelector("article h2")?.textContent).toBe("day");
     expect(container.querySelector(".session-settings")).toBeNull();
     clickText("End session");
     expect(container.querySelector(".session-settings")).not.toBeNull();
@@ -191,7 +191,7 @@ describe("new and reset word practice", () => {
     clickLabel("Reset progress: Reset me");
     clickLabel("Practice: Reset me");
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
+    expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
     clickText("Already know");
     expect(container.querySelector("main")?.textContent).not.toContain(
@@ -199,7 +199,9 @@ describe("new and reset word practice", () => {
     );
     expect(
       container.querySelector('[aria-label="Your answer"]'),
-    ).not.toBeNull();
+    ).toBeNull();
+    clickLabel("Keyboard");
+    expect(container.querySelector('.typing-input')).not.toBeNull();
   });
   it("shows the real new count and allows unrestricted folder practice", async () => {
     await renderApp();
@@ -211,7 +213,7 @@ describe("new and reset word practice", () => {
     clickLabel("Practice: Core vocabulary");
     clickText("Start practice");
     expect(container.querySelector("article")?.textContent).toContain(
-      "die Zeit",
+      "time",
     );
   });
   it("starts practice of a just-saved word instead of older seed words without a daily allowance", async () => {
@@ -254,7 +256,7 @@ describe("new and reset word practice", () => {
     ));
     clickText("Practice saved word");
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Frisch");
+    expect(container.querySelector("article h2")?.textContent).toBe("Fresh");
     const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
       stored.pairs["en-de"].words.find((w) => w.targetWord === "Neu")?.status,
@@ -269,7 +271,7 @@ describe("new and reset word practice", () => {
     clickLabel("Reset progress: Reset me");
     clickLabel("Practice: Reset me");
     clickText("Start practice");
-    expect(container.querySelector("article h2")?.textContent).toBe("Reset me");
+    expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
       current.pairs["en-de"].words.find((w) => w.id === "reset"),

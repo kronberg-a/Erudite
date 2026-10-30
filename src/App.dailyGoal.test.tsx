@@ -175,6 +175,7 @@ describe("daily word goal", () => {
     localStorage.setItem("erudite:v3", JSON.stringify(data));
     await renderApp();
     click("Start practice");
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Keyboard"]')!.click());
     const input = container.querySelector<HTMLInputElement>('[aria-label="Your answer"]')!;
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, word.targetWord);
@@ -186,7 +187,7 @@ describe("daily word goal", () => {
     click("I know");
     expect(container.textContent).toContain("Daily goal reached");
     click("Continue learning");
-    expect(container.querySelector(".card-prompt")).not.toBeNull();
+    expect(container.querySelector(".card-source-prompt")).not.toBeNull();
   });
   it("resets at local midnight during an open session", async () => {
     vi.setSystemTime(new Date(2026, 9, 27, 23, 59, 59));

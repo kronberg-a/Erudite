@@ -1,6 +1,8 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  previousPage: ["Previous page", "Предыдущая страница", "Vorherige Seite", "Page précédente", "Pagina precedente", "Página anterior"],
+  nextPage: ["Next page", "Следующая страница", "Nächste Seite", "Page suivante", "Pagina successiva", "Página siguiente"],
   recallsRemaining: ["Recalls left", "Осталось ответов", "Verbleibende Abrufe", "Rappels restants", "Richiami rimasti", "Respuestas restantes"],
   masteryRecallsRemaining: ["{count} recalls left", "Осталось ответов: {count}", "Noch {count} Abrufe", "{count} rappels restants", "{count} richiami rimasti", "{count} respuestas restantes"],
   scheduledReviewsRemaining: ["{count} scheduled reviews left", "Осталось повторений: {count}", "Noch {count} geplante Wiederholungen", "{count} révisions planifiées restantes", "{count} ripassi programmati rimasti", "{count} repasos programados restantes"],

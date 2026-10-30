@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { ArrowRight, CircleHelp, Volume2 } from "lucide-react";
+import { ArrowRight, ChevronDown, CircleHelp, Eye, Grid2X2, Keyboard, Volume2 } from "lucide-react";
 import type { Evaluation, Settings, TypingInput, WordCard } from "../types";
+import { speak } from "../core/speech";
 import type { T } from "../i18n/translations";
 import { readUiState, uiBoolean, uiCount, uiObject, uiString, useUiKey, writeUiState } from "../hooks/useUiState";
 import {
@@ -13,6 +14,7 @@ import {
 } from "../core/typing";
 
 interface Props {
+  startWithInput?: boolean;
   resumeTurn?: string;
   card: WordCard;
   settings: Settings;
@@ -20,11 +22,13 @@ interface Props {
   onInputModeChange?: (mode: TypingInput) => void;
   evaluation: Evaluation | null;
   onEvaluate: (result: Evaluation) => void;
+  onAssistance?: () => void;
   onListen: () => void;
   audioError: boolean;
   t: T;
 }
 interface TypingSnapshot {
+  inputChosen?: boolean;
   turn: string; input: string; inputMode: TypingInput; failedInput: string | null;
   usedHint: boolean; failedAttempts: number; tiles: { char: string; id: number }[]; selected: number[];
 }
@@ -47,7 +51,29 @@ export function HighlightedSentence({
     </>
   );
 }
+export function CardExamples({ card, settings, t }: { card: WordCard; settings: Settings; t: T }) {
+  const [expanded, setExpanded] = useState<number[]>([]);
+  const [audioError, setAudioError] = useState(false);
+  return <div className="context">
+    {card.examples.slice(0, 4).map((example, index) => <div className="example-row" key={index}>
+      <button className="example-toggle" aria-label={`${t("example")} ${index + 1}`} aria-expanded={expanded.includes(index)} onClick={(event) => {
+        event.stopPropagation();
+        setExpanded(expanded.includes(index) ? expanded.filter((i) => i !== index) : [...expanded, index]);
+      }}><ChevronDown size={18} /></button>
+      <div className="example-copy">
+        <p lang={settings.targetLanguage}><HighlightedSentence sentence={example.targetSentence} target={card.targetWord} /></p>
+        <p lang={settings.sourceLanguage} className="muted" hidden={!expanded.includes(index)}>{example.translatedSentence}</p>
+      </div>
+      <button className="example-audio" aria-label={`${t("listen")}: ${example.targetSentence}`} onClick={(event) => {
+        event.stopPropagation();
+        setAudioError(!speak(example.targetSentence, settings.targetLanguage));
+      }}><Volume2 size={16} /></button>
+    </div>)}
+    {audioError && <small role="status">{t("audioError")}</small>}
+  </div>;
+}
 export function TypingCard({
+  startWithInput = false,
   resumeTurn,
   card,
   settings,
@@ -55,6 +81,7 @@ export function TypingCard({
   onInputModeChange,
   evaluation,
   onEvaluate,
+  onAssistance,
   onListen,
   audioError,
   t,
@@ -64,11 +91,12 @@ export function TypingCard({
     const characters = Array.from(answerTarget(card.targetWord));
     return readUiState<TypingSnapshot | null>(snapshotKey, null, (value) => uiObject(value) && value.turn === resumeTurn && uiString(value.input) &&
       ["KEYBOARD", "TILES"].includes(value.inputMode as string) && (value.failedInput === null || uiString(value.failedInput)) &&
-      uiBoolean(value.usedHint) && uiCount(value.failedAttempts) && value.failedAttempts <= 3 &&
+      (value.inputChosen === undefined || uiBoolean(value.inputChosen)) && uiBoolean(value.usedHint) && uiCount(value.failedAttempts) && value.failedAttempts <= 3 &&
       Array.isArray(value.tiles) && value.tiles.length === characters.length && value.tiles.every((tile) => uiObject(tile) && uiCount(tile.id) && characters[tile.id] === tile.char) &&
       new Set(value.tiles.map((tile) => tile.id)).size === characters.length && Array.isArray(value.selected) &&
       value.selected.every((id) => uiCount(id) && id < characters.length) && new Set(value.selected).size === value.selected.length);
   });
+  const [inputChosen, setInputChosen] = useState(startWithInput || resume?.inputChosen === true || !!resume?.input);
   const [input, setInput] = useState(resume?.input ?? "");
   const [inputMode, setInputMode] = useState(resume?.inputMode ?? initialInputMode);
   const [failedInput, setFailedInput] = useState<string | null>(resume?.failedInput ?? null);
@@ -92,19 +120,19 @@ export function TypingCard({
   const slotRef = useRef<HTMLDivElement>(null);
   const submitted = useRef(!!evaluation);
   useEffect(() => {
-    if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected });
-  }, [snapshotKey, resumeTurn, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected]);
+    if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected });
+  }, [snapshotKey, resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected]);
   useEffect(() => {
-    if (!evaluation) {
-      if (inputMode === "KEYBOARD") inputRef.current?.focus();
+    if (!evaluation && inputChosen) {
+      if (inputMode === "KEYBOARD") inputRef.current?.focus({ preventScroll: true });
       else {
         setInput(
           selected.map((id) => tiles.find((c) => c.id === id)!.char).join(""),
         );
-        slotRef.current?.focus();
+        slotRef.current?.focus({ preventScroll: true });
       }
     }
-  }, [inputMode, evaluation]);
+  }, [inputMode, evaluation, inputChosen]);
   const chooseInput = (value: string) => {
     setFailedInput(null);
     setInput(value);
@@ -121,11 +149,15 @@ export function TypingCard({
     setSelected(ids);
   };
   const focusAnswer = () => {
-    if (inputMode === "KEYBOARD") inputRef.current?.focus();
-    else slotRef.current?.focus();
+    if (inputMode === "KEYBOARD") inputRef.current?.focus({ preventScroll: true });
+    else slotRef.current?.focus({ preventScroll: true });
   };
+  useEffect(() => {
+    if (usedHint || failedAttempts > 0) onAssistance?.();
+  }, [usedHint, failedAttempts, onAssistance]);
   const hint = () => {
     if (evaluation || submitted.current) return;
+    onAssistance?.();
     setUsedHint(true);
     chooseInput(nextHint(input, card.targetWord, settings.strictAccents));
     focusAnswer();
@@ -142,6 +174,7 @@ export function TypingCard({
           attemptCount.current,
         );
     if (!giveUp && result === "INCORRECT") {
+      onAssistance?.();
       attemptCount.current += 1;
       setFailedAttempts(attemptCount.current);
       setFailedInput(input);
@@ -183,28 +216,43 @@ export function TypingCard({
       submit();
     }
   };
-  const tone =
-    evaluation === "CORRECT"
-      ? "correct"
-      : evaluation === "ASSISTED"
-        ? "assisted"
-        : "incorrect";
-  const mistakeStyle = failedInput !== null
-    ? { animationName: failedAttempts % 2 ? "typing-shake" : "typing-shake-again" }
-    : undefined;
+  const attemptsBar = (
+    <div
+        id={attemptStatusId}
+        className="typing-attempts"
+        role="meter"
+        aria-label={t("attemptsRemaining")}
+        aria-valuemin={0}
+        aria-valuemax={3}
+        aria-valuenow={3 - failedAttempts}
+      >
+        {[0, 1, 2].map((attempt) => <span key={attempt} className={attempt < failedAttempts ? "used" : undefined} aria-hidden="true" />)}
+    </div>
+  );
   return (
-    <div className="typing-card" onKeyDown={keydown}>
-      <p lang={settings.sourceLanguage} className="typing-translation">
-        {card.translations.join(" · ")}
-      </p>
+    <div className={`typing-card input-${inputMode.toLowerCase()}`} onKeyDown={keydown} data-input-chosen={inputChosen}>
       {!evaluation ? (
         <>
-          <p className="typing-instruction">{t("typePrompt")}</p>
+          <div className="typing-prompt">
+            <p lang={settings.sourceLanguage} className="typing-translation">{card.translations.join(" · ")}</p>
+            <p className="typing-instruction">{t("typePrompt")}</p>
+          </div>
+          <div className="recall-choices typing-recall-choices">
+            <button type="button" aria-label={t("keyboard")} title={t("keyboard")} aria-pressed={inputChosen && inputMode === "KEYBOARD"} onClick={() => {
+              setInputChosen(true); setInputMode("KEYBOARD"); onInputModeChange?.("KEYBOARD"); focusAnswer();
+            }}><Keyboard size={22} /></button>
+            <button type="button" aria-label={t("reveal")} title={`${t("reveal")} (Esc)`} aria-keyshortcuts="Escape" onClick={() => submit(true)}><Eye size={22} /></button>
+            <button type="button" aria-label={t("tiles")} title={t("tiles")} aria-pressed={inputChosen && inputMode === "TILES"} onClick={() => {
+              setInputChosen(true); setInputMode("TILES"); onInputModeChange?.("TILES"); focusAnswer();
+            }}><Grid2X2 size={22} /></button>
+          </div>
+          {inputChosen && <>
+          <div className="typing-entry">
           {inputMode === "KEYBOARD" ? (
+            <>
             <input
               ref={inputRef}
               className={`typing-input ${failedInput !== null ? "typing-mistake" : ""}`}
-              style={mistakeStyle}
               type="text"
               value={input}
               maxLength={200}
@@ -218,13 +266,14 @@ export function TypingCard({
               spellCheck={false}
               onChange={(e) => chooseInput(e.target.value)}
             />
+            {attemptsBar}
+            </>
           ) : (
             <>
               <div
                 ref={slotRef}
                 className={`tile-answer ${failedInput !== null ? "typing-mistake" : ""}`}
-                style={mistakeStyle}
-                tabIndex={0}
+                  tabIndex={0}
                 role="group"
                 aria-label={t("answer")}
                 aria-describedby={attemptStatusId}
@@ -256,6 +305,8 @@ export function TypingCard({
                   );
                 })}
               </div>
+              {attemptsBar}
+              <div className="tile-prompt">
               <div
                 className="tile-bank"
                 role="group"
@@ -279,32 +330,19 @@ export function TypingCard({
                     {tile.char === " " ? "␣" : tile.char}
                   </button>
                 ))}
-              </div>
+              </div></div>
             </>
           )}
-          <div className="mobile-typing-inputs" role="group" aria-label={t("inputMode")}>
-            {(["KEYBOARD", "TILES"] as const).map((mode) => (
-              <button key={mode} type="button" className="text-button" aria-pressed={inputMode === mode} onClick={() => {
-                setInputMode(mode);
-                onInputModeChange?.(mode);
-              }}>
-                {t(mode === "KEYBOARD" ? "keyboard" : "tiles")}
-              </button>
-            ))}
           </div>
-          <p id={attemptStatusId} className="typing-attempts" role="status">
-            {failedAttempts > 0 && <span>{t("tryAgain")} </span>}
-            {t("attemptsRemaining")}: {3 - failedAttempts}
-          </p>
           <div className="typing-controls">
             <button
-              className="text-button"
+              className="icon-button typing-hint"
+              aria-label={t("hint")}
+              title={`${t("hint")} (Tab)`}
               aria-keyshortcuts="Tab"
               onClick={hint}
             >
-              <CircleHelp size={16} />
-              {t("hint")}
-              <kbd>Tab</kbd>
+              <CircleHelp size={18} />
             </button>
             <button
               className="primary-button"
@@ -314,20 +352,16 @@ export function TypingCard({
               {t("checkAnswer")}
               <ArrowRight size={16} />
             </button>
+
           </div>
-          <button
-            className="typing-give-up text-button"
-            aria-keyshortcuts="Escape"
-            onClick={() => submit(true)}
-          >
-            {t("giveUp")}
-            <kbd>Esc</kbd>
-          </button>
+          </>}
         </>
       ) : (
-        <>
-          <div className="typing-correct-word">
+        <div className="typing-result">
+          <div className="card-source-prompt"><h2 lang={settings.sourceLanguage}>{card.translations.join(" · ")}</h2></div>
+          <div className="typing-correct-word card-prompt">
             <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
+            <div className="phonetic-row">
             {card.transcription && (
               <p className="transcription">{card.transcription}</p>
             )}
@@ -336,43 +370,16 @@ export function TypingCard({
               aria-label={t("listen")}
               onClick={onListen}
             >
-              <Volume2 size={20} />
+              <Volume2 size={18} />
             </button>
+            </div>
             {audioError && <small role="status">{t("audioError")}</small>}
           </div>
-          <div className={`typing-feedback ${tone}`} role="status">
-            <strong>{t(tone)}</strong>
-            <p className="submitted-answer">{input || "—"}</p>
-            <p>
-              {t(
-                evaluation === "CORRECT"
-                  ? "correctHint"
-                  : evaluation === "ASSISTED"
-                    ? "assistedHint"
-                    : "incorrectHint",
-              )}
-            </p>
-          </div>
-          {card.examples.length > 0 && (
-            <div className="context">
-              <span className="eyebrow">{t("example")}</span>
-              {card.examples.map((example, index) => (
-                <div key={index}>
-                  <p lang={settings.targetLanguage}>
-                    <HighlightedSentence
-                      sentence={example.targetSentence}
-                      target={card.targetWord}
-                    />
-                  </p>
-                  <p lang={settings.sourceLanguage} className="muted">
-                    {example.translatedSentence}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+
+
+        </div>
       )}
+
     </div>
   );
 }

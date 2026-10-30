@@ -32,7 +32,7 @@ afterEach(() => {
 });
 function button(name: string) {
   const result = Array.from(container.querySelectorAll("button")).find(
-    (b) => b.textContent?.trim() === name,
+    (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
   );
   if (!result) throw new Error(`Missing button: ${name}`);
   return result;
@@ -54,6 +54,7 @@ function key(element: Element, key: string, extra: KeyboardEventInit = {}) {
   );
 }
 function input(value: string) {
+  if (!container.querySelector(".typing-input")) click("Keyboard");
   const el = container.querySelector<HTMLInputElement>(
     'input[aria-label="Your answer"]',
   )!;
@@ -66,7 +67,7 @@ function input(value: string) {
   });
   return el;
 }
-function setup(patch: Partial<WordCard> = {}, mode = "mixed", extraWords: WordCard[] = []) {
+function setup(patch: Partial<WordCard> = {}, mode = "mixed", extraWords: WordCard[] = [], chooseMode = true) {
   const seed = seedPair("en", "fr");
   const pair: PairData = {
     ...seed,
@@ -113,6 +114,7 @@ function setup(patch: Partial<WordCard> = {}, mode = "mixed", extraWords: WordCa
   act(() => root.render(<Harness />));
   act(() => container.querySelector<HTMLInputElement>(`input[name="session-mode"][value="${mode}"]`)!.click());
   click("Start practice");
+  if (chooseMode && container.querySelector(".typing-recall-choices")) click("Keyboard");
   return pair.words[0];
 }
 function commitGrade() {
@@ -124,16 +126,92 @@ function advanceTime() {
   act(() => vi.advanceTimersByTime(150));
 }
 describe("typing review lifecycle", () => {
+  it.each([
+    ["NEW", "blue", "New words"],
+    ["LEARNING", "amber", "Learning 1/3"],
+    ["REVIEW", "amber", "In progress"],
+  ] as const)("shows a labeled %s status dot inside the card", (status, color, label) => {
+    setup({ status, step: 1 }, "mixed", [], false);
+    const dot = container.querySelector('.card-status-marker .stat-dot')!;
+    expect(dot.classList.contains(color)).toBe(true);
+    expect(dot.getAttribute('aria-label')).toBe(label);
+    expect(dot.getAttribute('title')).toBe(label);
+    expect(dot.closest('article')).not.toBeNull();
+  });
+  it("keeps category and learning progress inside the three-dot menu", () => {
+    setup({ status: "LEARNING", step: 1 });
+    expect(container.querySelector('.card-top > .card-meta')).toBeNull();
+    const menu = container.querySelector<HTMLDetailsElement>('.card-menu')!;
+    expect(menu.open).toBe(false);
+    expect(menu.querySelector('.card-status')?.textContent).toContain('1/3');
+    expect(menu.querySelector('.category-tag')?.textContent?.trim()).not.toBe('');
+    act(() => menu.querySelector('summary')!.click());
+    expect(menu.open).toBe(true);
+    expect(container.querySelector('.typing-correct-word')).toBeNull();
+  });
+  it.each(["I know", "Repeat"])("allows %s before revealing a typing answer", (grade) => {
+    const original = setup({ status: "LEARNING", step: 1 }, "mixed", [], false);
+    expect(container.querySelector('.typing-correct-word')).toBeNull();
+    expect(container.querySelector('.action-bar .preselected')).toBeNull();
+    click(grade);
+    expect(updates.mock.calls[0][0].words[0]).toMatchObject({ repCount: original.repCount + 1, step: grade === "I know" ? 2 : 0 });
+    click("Undo");
+    expect(updates.mock.calls[1][0].words[0]).toEqual(original);
+  });
+  it("preserves assisted progress when Know is chosen after a hint before reveal", () => {
+    setup({ status: "LEARNING", step: 1 });
+    key(input("caf"), "Tab");
+    click("I know");
+    expect(updates.mock.calls[0][0].words[0]).toMatchObject({ step: 1 });
+  });
+  it("reveals directly from the choice screen without opening an answer field", () => {
+    setup({ status: "LEARNING", step: 1 }, "mixed", [], false);
+    expect(container.querySelector('.typing-input')).toBeNull();
+    click("Reveal");
+    expect(container.querySelector('.typing-correct-word h2')?.textContent).toBe("café (noun)");
+    expect(container.querySelector('.typing-input')).toBeNull();
+    expect(updates).not.toHaveBeenCalled();
+  });
+  it("keeps all three recall actions available on an automatic typing front", () => {
+    setup({ status: "LEARNING", step: 1 }, "mixed", [], false);
+    expect(container.querySelector(".typing-entry")).toBeNull();
+    expect(container.querySelector(".typing-controls")).toBeNull();
+    const choices = container.querySelector(".typing-recall-choices")!;
+    expect(choices.querySelectorAll("button")).toHaveLength(3);
+    act(() => choices.querySelectorAll<HTMLButtonElement>("button")[2].click());
+    expect(container.querySelector(".tile-bank")).not.toBeNull();
+    act(() => choices.querySelectorAll<HTMLButtonElement>("button")[0].click());
+    expect(container.querySelector(".typing-input")).not.toBeNull();
+    act(() => choices.querySelectorAll<HTMLButtonElement>("button")[1].click());
+    expect(container.querySelector(".typing-correct-word")).not.toBeNull();
+    expect(updates).not.toHaveBeenCalled();
+  });
+
+  it.each(["Keyboard", "Letter tiles"])("opens %s practice from the source-only front", (control) => {
+    setup({ status: "NEW", repCount: 0 });
+    expect(container.querySelector(".card-source-prompt h2")?.textContent).toBe("coffee");
+    expect(container.querySelector(".card-prompt")).toBeNull();
+    expect(container.querySelector('[aria-label="Listen to pronunciation"]')).toBeNull();
+    click(control);
+    expect(container.querySelector(control === "Keyboard" ? ".typing-input" : ".tile-bank")).not.toBeNull();
+    expect(updates).not.toHaveBeenCalled();
+  });
+
   it("introduces unseen Type Only words once as flashcards, then requires typing", () => {
     setup({ status: "NEW" });
-    expect(container.querySelector(".card-prompt h2")?.textContent).toBe("café (noun)");
+    expect(container.querySelector(".card-source-prompt h2")?.textContent).toBe("coffee");
+    expect(container.querySelector(".card-prompt")).toBeNull();
     expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
     expect(button("Don’t know")).not.toBeNull();
+    expect(container.querySelector("article .action-dock")).toBeNull();
+    expect(container.querySelector(".card-stack + .action-dock")).not.toBeNull();
     expect(button("Already know")).not.toBeNull();
     click("Reveal");
-    expect(container.querySelector(".card-answer")?.textContent).toContain("coffee");
+    expect(container.querySelector(".card-answer")?.textContent).toContain("café (noun)");
     click("Already know");
-    expect(container.querySelector('[aria-label="Your answer"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
+    click("Keyboard");
+    expect(container.querySelector(".typing-input")).not.toBeNull();
     expect(container.querySelector(".typing-correct-word")).toBeNull();
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "LEARNING", step: 1, repCount: 1 });
   });
@@ -272,14 +350,16 @@ describe("typing review lifecycle", () => {
     expect(document.activeElement).toBe(container.querySelector("input"));
     const field = input("CAFÉ");
     key(field, "Enter");
-    expect(container.textContent).toContain("Correct");
+    expect(container.querySelector(".flashcard.grade-correct")).not.toBeNull();
+    expect(container.querySelector(".typing-feedback")).toBeNull();
+    expect(container.textContent).not.toContain("Correct");
     expect(container.textContent).toContain("café (noun)");
-    expect(container.querySelectorAll(".context strong")).toHaveLength(2);
+    expect(container.querySelector(".context")).toBeNull();
     expect(container.querySelectorAll(".action-bar button")).toHaveLength(2);
     expect(container.querySelector(".action-next")).toBeNull();
     expect(container.querySelector(".action-reveal")).toBeNull();
     expect(document.activeElement).toBe(button("I know"));
-    expect(container.textContent).toContain("A coffee and a coffee.");
+    expect(container.textContent).not.toContain("A coffee and a coffee.");
     expect(speak).toHaveBeenCalledTimes(1);
     expect(updates).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(2000));
@@ -299,7 +379,8 @@ describe("typing review lifecycle", () => {
     key(field, "Tab");
     expect(field.value).toBe("café");
     key(field, "Enter");
-    expect(container.textContent).toContain("Correct with assistance");
+    expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
+    expect(container.textContent).not.toContain("Correct with assistance");
     expect(updates).not.toHaveBeenCalled();
     commitGrade();
     advanceTime();
@@ -308,7 +389,7 @@ describe("typing review lifecycle", () => {
       step: 1,
       repCount: 3,
     });
-    expect(container.querySelector<HTMLInputElement>("input")?.value).toBe("");
+    expect(container.querySelector(".typing-input")).toBeNull();
     expect(container.textContent).not.toContain("Correct with assistance");
   });
   it("reveals the answer without character differences and supports a know override", () => {
@@ -316,7 +397,8 @@ describe("typing review lifecycle", () => {
     key(input("cafe"), "Enter");
     key(input("cafe"), "Enter");
     key(input("cafe"), "Enter");
-    expect(container.textContent).toContain("Not quite");
+    expect(container.querySelector(".flashcard.grade-incorrect")).not.toBeNull();
+    expect(container.textContent).not.toContain("Not quite");
     expect(container.querySelector(".answer-diff")).toBeNull();
     expect(container.querySelector(".typing-correct-word h2")?.textContent).toBe("café (noun)");
     expect(updates).not.toHaveBeenCalled();
@@ -331,9 +413,9 @@ describe("typing review lifecycle", () => {
     setup();
     for (let miss = 1; miss <= 2; miss++) {
       key(input("wrong"), "Enter");
-      expect(container.textContent).toContain(
-        `Attempts remaining: ${3 - miss}`,
-      );
+      expect(container.querySelector('.typing-attempts')?.getAttribute('aria-valuenow')).toBe(String(3 - miss));
+      expect(container.querySelectorAll('.typing-attempts .used')).toHaveLength(miss);
+      expect(container.querySelector('.typing-input')?.nextElementSibling).toBe(container.querySelector('.typing-attempts'));
       expect(container.querySelector(".typing-feedback")).toBeNull();
       expect(container.querySelector("article")?.textContent).not.toContain(
         "café",
@@ -346,8 +428,9 @@ describe("typing review lifecycle", () => {
     }
     click("Check");
     expect(
-      container.querySelector(".typing-feedback.incorrect"),
+      container.querySelector(".flashcard.grade-incorrect"),
     ).not.toBeNull();
+    expect(container.querySelector('.typing-attempts')).toBeNull();
     expect(speak).toHaveBeenCalledTimes(1);
     expect(updates).not.toHaveBeenCalled();
     commitGrade();
@@ -357,7 +440,9 @@ describe("typing review lifecycle", () => {
       step: 0,
       repCount: 1,
     });
-    expect(container.textContent).toContain("Attempts remaining: 3");
+    expect(container.querySelector('.typing-input')).toBeNull();
+    click("Keyboard");
+    expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("3");
   });
   it.each([1, 2])(
     "grades a correct answer after %i misses as assisted and preserves progress",
@@ -366,7 +451,7 @@ describe("typing review lifecycle", () => {
       for (let miss = 0; miss < misses; miss++) key(input("wrong"), "Enter");
       key(input("café"), "Enter");
       expect(
-        container.querySelector(".typing-feedback.assisted"),
+        container.querySelector(".flashcard.grade-assisted"),
       ).not.toBeNull();
       expect(updates).not.toHaveBeenCalled();
       expect(speak).toHaveBeenCalledTimes(1);
@@ -374,7 +459,7 @@ describe("typing review lifecycle", () => {
       expect(updates.mock.calls[0][0].words[0]).toMatchObject({
         status: "LEARNING", step: 2, repCount: 1,
       });
-      expect(container.querySelector('[aria-label="Your answer"]')).not.toBeNull();
+      expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
     },
   );
   it("keeps input settings unavailable after hints and incorrect attempts", () => {
@@ -382,11 +467,11 @@ describe("typing review lifecycle", () => {
     key(input("wrong"), "Enter");
     key(input("wrong"), "Tab");
     expect(container.querySelector('select[aria-label="Answer input"]')).toBeNull();
-    expect(container.textContent).toContain("Attempts remaining: 2");
+    expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("2");
     key(input("café"), "Enter");
-    expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
+    expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
   });
-  it("gives general mistake feedback without identifying letters and keeps the attempt count", () => {
+  it("uses only border feedback without identifying letters and keeps the attempt count", () => {
     setup();
     key(input("cafe"), "Enter");
     expect(container.querySelector(".answer-diff")).toBeNull();
@@ -396,38 +481,41 @@ describe("typing review lifecycle", () => {
     input("caf");
     expect(container.querySelector(".typing-attempt-diff")).toBeNull();
     expect(container.querySelector("input")?.getAttribute("aria-invalid")).toBe("false");
-    expect(container.textContent).toContain("Attempts remaining: 2");
+    expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("2");
     key(input("café"), "Enter");
-    expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
+    expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
   });
   it("switches keyboard and tiles without clearing mistakes or hint usage", () => {
     setup({ status: "LEARNING", step: 1 });
     key(input("wrong"), "Enter");
-    const modes = container.querySelector(".mobile-typing-inputs")!;
-    act(() => modes.querySelectorAll<HTMLButtonElement>("button")[1].click());
+    const modes = container.querySelector(".typing-recall-choices")!;
+    act(() => modes.querySelectorAll<HTMLButtonElement>("button")[2].click());
     expect(container.querySelector(".tile-bank")).not.toBeNull();
     expect(document.activeElement).toBe(container.querySelector(".tile-answer"));
-    expect(container.textContent).toContain("Attempts remaining: 2");
+    expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("2");
     act(() => modes.querySelectorAll<HTMLButtonElement>("button")[0].click());
     expect(document.activeElement).toBe(container.querySelector("input"));
     key(input("café"), "Enter");
-    expect(container.querySelector(".typing-feedback.assisted")).not.toBeNull();
+    expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
   });
   it("keeps the mobile tile preference when a failed card returns", () => {
     setup();
-    act(() => container.querySelectorAll<HTMLButtonElement>(".mobile-typing-inputs button")[1].click());
+    act(() => container.querySelectorAll<HTMLButtonElement>(".typing-recall-choices button")[2].click());
     key(container.querySelector(".tile-answer")!, "Escape");
     expect(speak).toHaveBeenCalledTimes(1);
     commitGrade();
+    expect(container.querySelector(".tile-bank")).toBeNull();
+    click("Letter tiles");
     expect(container.querySelector(".tile-bank")).not.toBeNull();
     expect(container.querySelector('input[aria-label="Your answer"]')).toBeNull();
-    expect(container.textContent).toContain("Attempts remaining: 3");
+    expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("3");
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "LEARNING", step: 0 });
   });
   it("Escape reveals without committing, then Repeat applies a normal failure", () => {
     setup({ status: "LEARNING", step: 2, repCount: 2 });
     key(input(""), "Escape");
-    expect(container.textContent).toContain("Not quite");
+    expect(container.querySelector(".flashcard.grade-incorrect")).not.toBeNull();
+    expect(container.textContent).not.toContain("Not quite");
     expect(speak).toHaveBeenCalledTimes(1);
     expect(updates).not.toHaveBeenCalled();
     commitGrade();
@@ -449,14 +537,14 @@ describe("typing review lifecycle", () => {
     expect(updates.mock.calls[0][0].words[0].status).toBe("LEARNING");
     click("Undo");
     expect(updates.mock.calls[1][0].words[0]).toEqual(original);
-    expect(container.querySelector<HTMLInputElement>("input")?.value).toBe("");
+    expect(container.querySelector(".typing-input")).toBeNull();
   });
   it("lets letter tiles be selected, returned, and completed with a hint", () => {
     const seed = seedPair("en", "fr");
     act(() => root.render(<TypingCard
       card={{ ...seed.words[0], targetWord: "café", examples: [] }}
       settings={{ ...defaultSettings, targetLanguage: "fr" }}
-      inputMode="TILES" evaluation={null} onEvaluate={() => {}}
+      startWithInput inputMode="TILES" evaluation={null} onEvaluate={() => {}}
       onListen={() => {}} audioError={false} t={translator("en")}
     />));
     const bank = container.querySelector('[aria-label="Available letters"]')!;
@@ -468,7 +556,7 @@ describe("typing review lifecycle", () => {
     )!;
     act(() => inserted.click());
     expect(c.disabled).toBe(false);
-    click("HintTab");
+    click("Hint");
     expect(
       container.querySelector('[aria-label="Return letter: c"]'),
     ).not.toBeNull();
