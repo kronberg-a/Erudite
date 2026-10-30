@@ -2603,5 +2603,6 @@ body:has(.study-view) { overflow: hidden; overscroll-behavior: none; }
   .study-view:not([data-active="true"]) .session-empty > .primary-button { padding: 8px; font-size: 10px; gap: 6px; }
 }
 
-.card-status-marker { display: flex; align-items: flex-end; flex: 0 0 28px; padding: 0 5% 12px; }
+.card-status-marker { display: flex; align-items: center; flex: 0 0 auto; height: 28px; }
+.study-view[data-active="true"] .card-top { padding-left: 5%; }
 .card-status-marker .stat-dot { width: 8px; height: 8px; }

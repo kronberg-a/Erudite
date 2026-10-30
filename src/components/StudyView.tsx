@@ -440,6 +440,14 @@ export function StudyView({
                 }}
               >
                 <div className="card-top">
+                <div className="card-status-marker">
+                  <span
+                    className={`stat-dot ${card.status === "NEW" ? "blue" : card.status === "MASTERED" ? "green" : "amber"}`}
+                    role="img"
+                    aria-label={cardStatusLabel}
+                    title={cardStatusLabel}
+                  />
+                </div>
                   <details className="card-menu" onClick={(event) => event.stopPropagation()}>
                     <summary aria-label={t("settings")}><MoreHorizontal size={22} /></summary>
                     <div className="card-menu-content">
@@ -522,14 +530,7 @@ export function StudyView({
                     )}
                   </div>
                 )}
-                <div className="card-status-marker">
-                  <span
-                    className={`stat-dot ${card.status === "NEW" ? "blue" : card.status === "MASTERED" ? "green" : "amber"}`}
-                    role="img"
-                    aria-label={cardStatusLabel}
-                    title={cardStatusLabel}
-                  />
-                </div>
+
               </article>
             </div>
             <div className={`action-dock ${typing ? "typing-actions" : ""}`} role="group">
