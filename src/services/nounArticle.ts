@@ -1,5 +1,8 @@
 import type { Language } from "../types";
 import { analyzeContextualSelection, canonicalizeWordFallback } from "./article";
+import { checkWordWithGemini } from "./gemini";
+import type { WordCheckResult } from "./geminiProtocol";
+export type { WordCheckResult } from "./geminiProtocol";
 
 const articles: Partial<Record<Language, RegExp>> = {
   de: /^(?:der|die|das)\s+\S/iu,
@@ -7,6 +10,18 @@ const articles: Partial<Record<Language, RegExp>> = {
   it: /^(?:(?:il|lo|la)\s+|l['’])\S/iu,
   es: /^(?:el|la)\s+\S/iu,
 };
+
+/** A spelling verdict requires an explicit check, never a guessed dictionary form. */
+export async function checkVocabularyWord(word: string, language: Language, sentence = "", signal?: AbortSignal, apiKey?: string): Promise<WordCheckResult> {
+  const text = word.trim();
+  signal?.throwIfAborted();
+  const result = await checkWordWithGemini(text, language, sentence, signal, apiKey);
+  signal?.throwIfAborted();
+  if (result) return { ...result, nounSuggestion: result.nounSuggestion === text ? "" : result.nounSuggestion };
+  const nounSuggestion = await suggestNounArticle(text, language, sentence, signal, apiKey);
+  signal?.throwIfAborted();
+  return { spelling: "unknown", correctedWord: text, nounSuggestion: nounSuggestion ?? "" };
+}
 
 /** Use the reader's noun analysis, including its morphology fallback. */
 export async function suggestNounArticle(

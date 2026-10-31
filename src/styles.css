@@ -1503,6 +1503,21 @@ button.word-detail:hover strong {
   display: flex;
   flex-direction: column;
 }
+.word-form-toggles { display: grid; gap: 2px; }
+.word-entry-field { display: flex; flex-direction: column; gap: 6px; }
+.word-input-wrap { position: relative; display: block; width: 100%; }
+.word-input-wrap input { padding-right: 44px; }
+.word-field-indicator { position: absolute; right: 14px; top: 50%; translate: 0 -50%; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+.word-field-indicator.check-correct, .word-check-feedback[data-result="correct"] { color: var(--positive); }
+.word-field-indicator.check-incorrect { color: var(--status-assisted); }
+.word-field-spinner { animation: word-field-spin 900ms linear infinite; }
+@keyframes word-field-spin { to { transform: rotate(360deg); } }
+.word-check-feedback { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; min-height: 24px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.word-check-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; width: 100%; padding: 8px 0; font-size: 12px; color: var(--muted); text-align: left; }
+.word-check-track { position: relative; width: 32px; height: 18px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--soft); transition: background-color 150ms ease-out; }
+.word-check-track::after { content: ""; position: absolute; top: 1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform 150ms ease-out, background-color 150ms ease-out; }
+.word-check-toggle[aria-checked="true"] .word-check-track { background: var(--accent); border-color: var(--accent); }
+.word-check-toggle[aria-checked="true"] .word-check-track::after { transform: translateX(14px); background: #fff; }
 .word-form-fields {
   min-height: 0;
   overflow-y: auto;

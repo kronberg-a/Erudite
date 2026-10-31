@@ -34,9 +34,11 @@ import { AboutView } from "./components/AboutView";
 import { BrandLogo } from "./components/BrandLogo";
 import { configureGemini, initializeGemini } from "./services/gemini";
 import { UiStateScope, clearPairUiState, readUiState, uiCount, uiObject, useStoredUiState, writeUiState } from "./hooks/useUiState";
+import { useKeyboardViewport } from "./hooks/useKeyboardViewport";
 type Page = "learn" | "categories" | "reader" | "settings" | "about" | "stats";
 const initial = loadData();
 export default function App() {
+  useKeyboardViewport();
   const [data, setData] = useState<AppData>(initial.data);
   const [storageError, setStorageError] = useState(initial.error);
   const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings", "about", "stats"].includes(value as string));

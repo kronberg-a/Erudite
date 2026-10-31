@@ -33,6 +33,17 @@ it("uses the server key without returning it and forces the fixed model/schema",
   expect(JSON.parse(init.body).generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
   expect(JSON.stringify(vi.mocked(res.end).mock.calls)).not.toContain("server-test-secret");
 });
+it("checks spelling and noun articles through the validated server operation", async () => {
+  vi.stubEnv("GEMINI_API_KEY", "server-test-secret");
+  const result = { spelling: "incorrect", correctedWord: "Haus", nounSuggestion: "das Haus" };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(result) }] } }] }) }));
+  const res = response();
+  await geminiHandler(request({ operation: "wordCheck", input: { word: "Huas", language: "de", sentence: "" } }), res);
+  expect(res.writeHead).toHaveBeenCalledWith(200);
+  expect(res.end).toHaveBeenCalledWith(JSON.stringify(result));
+  const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string);
+  expect(body.generationConfig.responseSchema.required).toEqual(["spelling", "correctedWord", "nounSuggestion"]);
+});
 it("allows a personal key and reports server availability without disclosing it", async () => {
   vi.stubEnv("GEMINI_API_KEY", "server-test-secret");
   const res = response(); await geminiHandler(request({}, {}, "GET"), res);

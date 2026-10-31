@@ -78,7 +78,9 @@ Final evaluation always pauses on the full revealed card and plays pronunciation
 
 ## Vocabulary and translation
 
-Enable folders for study, search target words and translations, create folders, edit words, reset progress, or mark individual words mastered. Add Word accepts a word in the learning language and translates into the base language after 500ms. Manual translations are editable; alternative results can be added. Optional sentences have a separate translation action. Requests are cancelled or ignored when stale so late responses cannot overwrite manual edits.
+Enable folders for study, search target words and translations, create folders, edit words, reset progress, or mark individual words mastered. Add Word accepts a word in the learning language; use **Translate** to translate it into the base language. The separate **Auto-translate** toggle is off by default; when enabled, it translates after a 500ms typing pause and remembers the choice for the browser session. Disabling it cancels pending automatic requests. Manual translations are editable and protected from automatic replacement; alternative results can be added. Optional sentences have a separate translation action. Requests are cancelled or ignored when stale so late responses cannot overwrite manual edits.
+
+**Check spelling and articles** runs after a 500ms typing pause, using the configured Gemini connection to check spelling in all six languages and suggest noun articles where applicable. A small ring inside the word field indicates checking or translation; corrections are applied only when accepted. Without a successful spelling response, the form reports that spelling could not be verified, while article suggestions can still use the existing morphology fallback. The toggle cancels pending checks and remembers its state for the browser session; manual translation remains available.
 
 MyMemory is a third-party public service with availability and quota limits. Only word/sentence text explicitly entered for translation and the language pair are sent to it. The curated starter dictionary provides an offline fallback for recognized words; otherwise enter translations manually. Pronunciation uses browser speech synthesis and depends on installed voices and browser support.
 
@@ -104,7 +106,7 @@ Gemini is the sole source of CEFR highlighting. The full article is analyzed in 
 
 CEFR model responses use compact token ids; the app restores the original word strings and offsets locally without assigning any levels itself. An invalid analysis response is retried once. Processing failures and timeouts are shown separately from rejected keys, quota failures and service outages, and do not disable unrelated Gemini translations. CEFR requests have a 45-second client deadline and a 50-second server deadline; caller cancellation still stops them immediately.
 
-Selected text and context sentences, or article excerpts for CEFR analysis, are sent to Google when Gemini is enabled. Free-tier submissions may be used to improve Google's products. See [Gemini pricing and data use](https://ai.google.dev/gemini-api/docs/pricing). Keys, raw model responses and upstream errors are not logged by the middleware. Requests are restricted to the three supported operations and the fixed model.
+Selected text and context sentences, article excerpts for CEFR analysis, and words submitted for spelling checks are sent to Google when Gemini is enabled. Free-tier submissions may be used to improve Google's products. See [Gemini pricing and data use](https://ai.google.dev/gemini-api/docs/pricing). Keys, raw model responses and upstream errors are not logged by the middleware. Requests are restricted to validated vocabulary and article operations and the fixed model.
 
 ## Persistence
 

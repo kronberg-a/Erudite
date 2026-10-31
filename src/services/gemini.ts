@@ -1,7 +1,7 @@
 import type { Language } from "../types";
 import { wordParts } from "./article";
 import { GEMINI_ENDPOINT, GEMINI_STANDARD_TIMEOUT_MS, GeminiAnalysisError, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "./geminiProtocol";
-import type { ArticleExtractionResult, GeminiRequest, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
+import type { ArticleExtractionResult, GeminiRequest, SelectionAnalysisRequest, SelectionAnalysisResult, WordCheckResult } from "./geminiProtocol";
 export type { ArticleExtractionRequest, ArticleExtractionResult, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
 
 let configuredKey = "";
@@ -153,4 +153,8 @@ export async function analyzeCefrWithGemini(text: string, language: Language, si
 export async function extractArticleWithGemini(url: string, signal?: AbortSignal, apiKey?: string): Promise<ArticleExtractionResult | undefined> {
   const result = await requestGemini({ operation: "article", input: { url } }, signal, apiKey);
   return result && "title" in result && "text" in result && "url" in result ? result as ArticleExtractionResult : undefined;
+}
+export async function checkWordWithGemini(word: string, language: Language, sentence: string, signal?: AbortSignal, apiKey?: string): Promise<WordCheckResult | undefined> {
+  const result = await requestGemini({ operation: "wordCheck", input: { word, language, sentence } }, signal, apiKey);
+  return result && "spelling" in result ? result : undefined;
 }

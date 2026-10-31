@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyzeCefrWithGemini, analyzeSelectionWithGemini, configureGemini, extractArticleWithGemini, getGeminiConnectionState, isGeminiConfigured, translateWithGemini } from "./gemini";
+import { analyzeCefrWithGemini, analyzeSelectionWithGemini, checkWordWithGemini, configureGemini, extractArticleWithGemini, getGeminiConnectionState, isGeminiConfigured, translateWithGemini } from "./gemini";
 import { analyzeArticleCefr } from "./cefr";
 import { canonicalizeWord } from "./article";
 import { translate } from "./translator";
@@ -13,6 +13,34 @@ const upstream = (value: unknown) => ({ candidates: [{ finishReason: "STOP", con
 beforeEach(() => configureGemini("test-key"));
 afterEach(() => { configureGemini(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+describe("word spelling checks", () => {
+  it("checks and caches spelling and articles in one request", async () => {
+    const value = { spelling: "incorrect", correctedWord: "Haus", nounSuggestion: "das Haus" };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => value });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await checkWordWithGemini("Huas", "de", "")).toEqual(value);
+    expect(await checkWordWithGemini("Huas", "de", "")).toEqual(value);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ operation: "wordCheck", input: { word: "Huas", language: "de", sentence: "" } });
+  });
+  it.each(["en", "ru", "de", "fr", "it", "es"] as const)("validates spelling requests for %s", (language) => {
+    const request = { operation: "wordCheck", input: { word: "test", language, sentence: "" } } as const;
+    expect(validGeminiRequest(request)).toBe(true);
+    expect(parseGeminiResult(request, { spelling: "correct", correctedWord: "test", nounSuggestion: "" })).toEqual({ spelling: "correct", correctedWord: "test", nounSuggestion: "" });
+    expect(validGeminiRequest({ ...request, input: { ...request.input, word: "x".repeat(101) } })).toBe(false);
+    expect(validGeminiRequest({ ...request, input: { ...request.input, sentence: "x".repeat(1001) } })).toBe(false);
+  });
+  it("rejects contradictions and noun forms that lack the required article", () => {
+    const request = { operation: "wordCheck", input: { word: "Haus", language: "de", sentence: "" } } as const;
+    for (const result of [
+      { spelling: "incorrect", correctedWord: "Haus", nounSuggestion: "" },
+      { spelling: "correct", correctedWord: "Häuser", nounSuggestion: "" },
+      { spelling: "unknown", correctedWord: "Häuser", nounSuggestion: "" },
+      { spelling: "correct", correctedWord: "Haus", nounSuggestion: "Haus" },
+      { spelling: "correct", correctedWord: "", nounSuggestion: "" },
+    ]) expect(() => parseGeminiResult(request, result)).toThrow();
+  });
+});
 describe("hybrid Gemini client", () => {
   it("skips network entirely without a configured key", async () => {
     configureGemini();

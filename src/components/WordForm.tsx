@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, Languages, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ArrowRight, Check, CircleAlert, CircleHelp, Languages, LoaderCircle, Plus, X } from "lucide-react";
 import type {
   Category,
   PairData,
@@ -10,7 +10,8 @@ import type {
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
-import { suggestNounArticle } from "../services/nounArticle";
+import { checkVocabularyWord, type WordCheckResult } from "../services/nounArticle";
+import { uiBoolean, useStoredUiState } from "../hooks/useUiState";
 type ExampleDraft = WordCard["examples"][number] & { id: string };
 const emptyExample = (): ExampleDraft => ({ id: crypto.randomUUID(), targetSentence: "", translatedSentence: "" });
 export function WordForm({
@@ -48,7 +49,10 @@ export function WordForm({
   );
   const [newFolder, setNewFolder] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
-  const [nounSuggestion, setNounSuggestion] = useState<string>();
+  const [checksEnabled, setChecksEnabled] = useStoredUiState("word-form:checks-enabled", true, uiBoolean);
+  const [autoTranslate, setAutoTranslate] = useStoredUiState("word-form:auto-translate", false, uiBoolean);
+  const [wordCheck, setWordCheck] = useState<WordCheckResult>();
+  const wordSuggestion = wordCheck?.nounSuggestion || (wordCheck?.spelling === "incorrect" ? wordCheck.correctedWord : "");
   const [checkingArticle, setCheckingArticle] = useState(false);
   const nounController = useRef<AbortController | null>(null);
   const acceptedNoun = useRef<{ word: string; language: Settings["targetLanguage"] } | null>(null);
@@ -60,32 +64,54 @@ export function WordForm({
   const [saved, setSaved] = useState(false);
   const [savedWordId, setSavedWordId] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const autoController = useRef<AbortController | null>(null);
+  const manualTranslation = useRef(!!existing?.translations.length);
   const sentenceControllers = useRef(new Map<string, AbortController>());
   const revision = useRef(0);
   const nounContext = examples[0]?.targetSentence ?? "";
   useEffect(() => {
-    setNounSuggestion(undefined);
     setCheckingArticle(false);
     if (acceptedNoun.current?.word === word && acceptedNoun.current.language === settings.targetLanguage) return;
-    if (!word.trim() || word === existing?.targetWord || settings.targetLanguage === "en" || settings.targetLanguage === "ru") return;
+    setWordCheck(undefined);
+    if (!checksEnabled || !/\p{L}/u.test(word) || word === existing?.targetWord) return;
     const abort = new AbortController();
     nounController.current = abort;
     const timer = setTimeout(() => {
       if (abort.signal.aborted) return;
       setCheckingArticle(true);
-      void suggestNounArticle(word, settings.targetLanguage, nounContext, abort.signal, settings.geminiApiKey)
-        .then((suggestion) => { if (!abort.signal.aborted) setNounSuggestion(suggestion); })
-        .catch(() => { /* Keep manual word entry available when analysis is offline. */ })
+      void checkVocabularyWord(word, settings.targetLanguage, nounContext, abort.signal, settings.geminiApiKey)
+        .then((result) => { if (!abort.signal.aborted) setWordCheck(result); })
+        .catch(() => {
+          if (!abort.signal.aborted) setWordCheck({ spelling: "unknown", correctedWord: word.trim(), nounSuggestion: "" });
+        })
         .finally(() => { if (!abort.signal.aborted) setCheckingArticle(false); });
     }, 500);
     return () => { clearTimeout(timer); abort.abort(); };
-  }, [word, nounContext, settings.targetLanguage, settings.geminiApiKey, existing?.targetWord]);
-  const request = async (text: string) => {
-    if (!text.trim()) return;
+  }, [word, nounContext, checksEnabled, settings.targetLanguage, settings.geminiApiKey, existing?.targetWord]);
+  const useCheckedWord = (value: string) => {
+    acceptedNoun.current = { word: value, language: settings.targetLanguage };
+    nounController.current?.abort();
+    controller.current?.abort();
+    setCheckingArticle(false);
+    setBusy(false);
+    setWord(value);
+    setWordCheck((previous) => previous && ({ ...previous,
+      spelling: previous.spelling === "unknown" ? "unknown" : "correct",
+      correctedWord: value,
+      nounSuggestion: previous.nounSuggestion === value ? "" : previous.nounSuggestion,
+    }));
+    setAlternatives([]);
+    revision.current++;
+    setSaved(false);
+  };
+  const request = useCallback(async (text: string, automatic = false) => {
+    if (!text.trim() || (automatic && manualTranslation.current)) return;
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
-    const version = revision.current;
+    autoController.current = automatic ? abort : null;
+    if (!automatic) manualTranslation.current = false;
+    const version = ++revision.current;
     setBusy(true);
     setMessage(null);
     try {
@@ -105,8 +131,24 @@ export function WordForm({
         setMessage("translateError");
     } finally {
       if (!abort.signal.aborted) setBusy(false);
+      if (autoController.current === abort) autoController.current = null;
     }
-  };
+  }, [settings.targetLanguage, settings.sourceLanguage]);
+  useEffect(() => {
+    if (!autoTranslate || !word.trim() || word === existing?.targetWord || manualTranslation.current) return;
+    const version = revision.current;
+    const timer = setTimeout(() => {
+      if (version === revision.current) void request(word, true);
+    }, 500);
+    return () => {
+      clearTimeout(timer);
+      if (autoController.current) {
+        autoController.current.abort();
+        autoController.current = null;
+        setBusy(false);
+      }
+    };
+  }, [word, autoTranslate, request, existing?.targetWord]);
   useEffect(
     () => () => {
       controller.current?.abort();
@@ -150,7 +192,7 @@ export function WordForm({
   const save = () => {
     acceptedNoun.current = null;
     nounController.current?.abort();
-    setNounSuggestion(undefined);
+    setWordCheck(undefined);
     setCheckingArticle(false);
     controller.current?.abort();
     sentenceControllers.current.forEach((controller) => controller.abort());
@@ -208,6 +250,7 @@ export function WordForm({
     });
     if (existing) onClose?.();
     else {
+      manualTranslation.current = false;
       setWord("");
       setTranslation("");
       setTranscription("");
@@ -263,6 +306,23 @@ export function WordForm({
           <ArrowRight size={15} />
           <span>{languageNames[settings.sourceLanguage]}</span>
         </div>
+        <div className="word-form-toggles">
+        <button type="button" role="switch" aria-checked={checksEnabled} className="word-check-toggle"
+          onClick={() => {
+            acceptedNoun.current = null;
+            nounController.current?.abort();
+            setCheckingArticle(false);
+            setWordCheck(undefined);
+            setChecksEnabled((value) => !value);
+          }}>
+          <span>{t("wordChecks")}</span><span className="word-check-track" aria-hidden="true" />
+        </button>
+        <button type="button" role="switch" aria-checked={autoTranslate} className="word-check-toggle"
+          onClick={() => setAutoTranslate((value) => !value)}>
+          <span>{t("autoTranslate")}</span><span className="word-check-track" aria-hidden="true" />
+        </button>
+        </div>
+        <div className="word-entry-field">
         <label htmlFor={`${id}-word`}>
           <span className="label-action">
             {t("targetWord")}
@@ -272,20 +332,30 @@ export function WordForm({
               disabled={!word.trim() || busy}
               onClick={() => { void request(word); }}
             >
-              {busy ? t("translating") : t("translate")}
+              {t("translate")}
             </button>
           </span>
+            <span className="word-input-wrap">
             <input
               id={`${id}-word`}
               aria-label={t("targetWord")}
               required
               autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-busy={checkingArticle || busy}
+              aria-describedby={checksEnabled ? `${id}-word-feedback` : undefined}
               maxLength={100}
               value={word}
               lang={settings.targetLanguage}
               onChange={(e) => {
                 acceptedNoun.current = null;
+                nounController.current?.abort();
+                setWordCheck(undefined);
+                setCheckingArticle(false);
                 controller.current?.abort();
+                manualTranslation.current = false;
                 setWord(e.target.value);
                 revision.current++;
                 setSaved(false);
@@ -295,22 +365,23 @@ export function WordForm({
                 if (!existing) setTranslation("");
               }}
             />
+            {(checkingArticle || busy) ? <span className="word-field-indicator" role="status" aria-label={t(busy ? "translating" : "checkingWord")}>
+              <LoaderCircle size={18} className="word-field-spinner" aria-hidden="true" />
+            </span> : checksEnabled && wordCheck && <span className={`word-field-indicator check-${wordCheck.spelling}`} aria-hidden="true">
+              {wordCheck.spelling === "correct" ? <Check size={18} /> : wordCheck.spelling === "incorrect" ? <CircleAlert size={18} /> : <CircleHelp size={18} />}
+            </span>}
+            </span>
         </label>
-        {checkingArticle && <p className="form-message" role="status">{t("checkingArticle")}</p>}
-        {nounSuggestion && <div className="translation-chips" aria-live="polite">
-          <button type="button" onClick={() => {
-            acceptedNoun.current = { word: nounSuggestion, language: settings.targetLanguage };
-            nounController.current?.abort();
-            controller.current?.abort();
-            setBusy(false);
-            setWord(nounSuggestion);
-            setNounSuggestion(undefined);
-            revision.current++;
-            setSaved(false);
-          }}>
-            <Plus size={12} aria-hidden="true" />{t("useNounArticle").replace("{word}", nounSuggestion)}
+        <div id={`${id}-word-feedback`} className="word-check-feedback" data-result={checksEnabled ? wordCheck?.spelling : undefined} aria-live="polite">
+          {checksEnabled && wordCheck && wordCheck.spelling !== "incorrect" &&
+            <span>{t(wordCheck.spelling === "correct" ? "wordSpellingCorrect" : "wordCheckUnavailable")}</span>}
+        </div>
+        {checksEnabled && wordSuggestion && <div className="translation-chips" aria-live="polite">
+          <button type="button" onClick={() => useCheckedWord(wordSuggestion)}>
+            <Plus size={12} aria-hidden="true" />{t("useWordCorrection").replace("{word}", wordSuggestion)}
           </button>
         </div>}
+        </div>
         <label>
           {t("translation")}
           <input
@@ -319,6 +390,10 @@ export function WordForm({
             value={translation}
             lang={settings.sourceLanguage}
             onChange={(e) => {
+              manualTranslation.current = true;
+              controller.current?.abort();
+              autoController.current = null;
+              setBusy(false);
               revision.current++;
               setTranslation(e.target.value);
             }}
@@ -331,6 +406,7 @@ export function WordForm({
                 type="button"
                 key={a}
                 onClick={() => {
+                  manualTranslation.current = true;
                   revision.current++;
                   setTranslation((previous) =>
                     [

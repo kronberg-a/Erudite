@@ -25,11 +25,17 @@ export interface ArticleExtractionRequest {
 export interface ArticleExtractionResult {
   title: string; text: string; url: string; language?: string;
 }
+export interface WordCheckResult {
+  spelling: "correct" | "incorrect" | "unknown";
+  correctedWord: string;
+  nounSuggestion: string;
+}
 export type GeminiRequest =
   | { operation: "selection"; input: SelectionAnalysisRequest }
   | { operation: "translation"; input: { text: string; from: Language; to: Language } }
   | { operation: "cefr"; input: { text: string; language: Language; tokens: { offset: number; word: string }[] } }
-  | { operation: "article"; input: ArticleExtractionRequest };
+  | { operation: "article"; input: ArticleExtractionRequest }
+  | { operation: "wordCheck"; input: { word: string; language: Language; sentence: string } };
 
 const stringSchema = { type: "STRING" };
 const alternativesSchema = { type: "ARRAY", items: stringSchema, maxItems: 5 };
@@ -47,6 +53,12 @@ const selectionSchema = {
 const articleSchema = {
   type: "OBJECT", properties: { title: stringSchema, text: stringSchema, language: stringSchema },
   required: ["title", "text"],
+};
+const wordCheckSchema = {
+  type: "OBJECT", properties: {
+    spelling: { type: "STRING", enum: ["correct", "incorrect", "unknown"] },
+    correctedWord: stringSchema, nounSuggestion: stringSchema,
+  }, required: ["spelling", "correctedWord", "nounSuggestion"],
 };
 const cefrSchema = {
   type: "OBJECT", properties: { tokens: { type: "ARRAY", items: {
@@ -67,6 +79,7 @@ Translate the selected contextual sense and entire sentence together. Bank in a 
 
 export function geminiBody(request: GeminiRequest) {
   const instruction = request.operation === "selection" ? normalization
+    : request.operation === "wordCheck" ? `Check the supplied word or short phrase in the specified language. Use the optional sentence only to disambiguate meaning. Assess spelling, capitalization and any supplied noun article. Preserve valid inflected forms, plurals, idioms and proper names; do not call them misspellings or replace them with dictionary lemmas. Missing noun articles alone are not spelling errors. Return spelling=correct and correctedWord exactly as supplied when valid; incorrect only for an identifiable error, with the smallest justified correction. Return unknown and the unchanged word when uncertain; never invent a correction. Separately, nounSuggestion may contain an unambiguous dictionary noun with its article in German (der/die/das), French (le/la/l'), Italian (il/lo/la/l') or Spanish (el/la), using correct capitalization and elision. Return an empty nounSuggestion for other parts of speech, ambiguity, English or Russian. All returned words must fit 100 characters.`
     : request.operation === "translation" ? "Translate the supplied text from from to to, naturally and accurately. Return translation and at most five alternatives."
     : request.operation === "cefr" ? `You are the sole CEFR classifier. Classify the supplied tokens in their article context. Return each token's exact supplied id and its level, without calculating character offsets or copying word strings. Return A1 for function words, proper names and basic senses; otherwise A2/B1/B2/C1/C2. Rate the actual contextual meaning and frequency, never spelling length or capitalization alone. Rate whole compounds by difficulty. Treat separable/phrasal verbs as a unit and assign the same level to both token ids. Include basic as well as advanced words. Never invent ids.`
     : "Extract the readable title and body text from the article at the provided URL. Omit navigation, advertisements, cookie notices, and site chrome. Separate paragraphs with double newlines. Detect the main language code (e.g. en, de, fr, es, it, ru).";
@@ -78,7 +91,7 @@ export function geminiBody(request: GeminiRequest) {
     contents: [{ role: "user", parts: [{ text: JSON.stringify(input) }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      responseSchema: request.operation === "selection" ? selectionSchema : request.operation === "translation" ? translationSchema : request.operation === "cefr" ? cefrSchema : articleSchema,
+      responseSchema: request.operation === "selection" ? selectionSchema : request.operation === "translation" ? translationSchema : request.operation === "cefr" ? cefrSchema : request.operation === "wordCheck" ? wordCheckSchema : articleSchema,
       thinkingConfig: { thinkingLevel: "minimal" }, maxOutputTokens: (request.operation === "cefr" || request.operation === "article") ? 16384 : 4096,
     },
   };
@@ -97,6 +110,7 @@ export function validGeminiRequest(value: unknown): value is GeminiRequest {
     i.tokens.every((token) => object(token) && Number.isSafeInteger(token.offset) && Number(token.offset) >= 0 && text(token.word, 2000) &&
       (i.text as string).slice(Number(token.offset), Number(token.offset) + token.word.length) === token.word);
   if (value.operation === "article") return text(i.url, 4096) && /^https?:\/\//i.test(i.url as string);
+  if (value.operation === "wordCheck") return text(i.word, 100) && language(i.language) && typeof i.sentence === "string" && i.sentence.length <= 1000;
   return false;
 }
 
@@ -110,9 +124,21 @@ export function extractGeminiResult(payload: unknown): unknown {
   return JSON.parse(content);
 }
 
-export function parseGeminiResult(request: GeminiRequest, value: unknown): SelectionAnalysisResult | { translation: string; alternatives: string[] } | { tokens: { offset: number; word: string; level: GeminiLevel }[] } | ArticleExtractionResult {
+export function parseGeminiResult(request: GeminiRequest, value: unknown): SelectionAnalysisResult | { translation: string; alternatives: string[] } | { tokens: { offset: number; word: string; level: GeminiLevel }[] } | ArticleExtractionResult | WordCheckResult {
   if (!object(value)) throw new Error("Invalid Gemini result");
   const clean = (v: string) => v.replace(/<[^>]*>/gu, "").normalize("NFC").trim();
+  if (request.operation === "wordCheck") {
+    if (!["correct", "incorrect", "unknown"].includes(value.spelling as string) || !text(value.correctedWord, 100) ||
+      typeof value.nounSuggestion !== "string" || value.nounSuggestion.length > 100) throw new Error("Invalid word check result");
+    const correctedWord = clean(value.correctedWord);
+    const nounSuggestion = clean(value.nounSuggestion);
+    const original = request.input.word.normalize("NFC").trim();
+    if (!correctedWord || /[\r\n]/u.test(correctedWord + nounSuggestion) ||
+      (value.spelling === "incorrect" ? correctedWord === original : correctedWord !== original)) throw new Error("Inconsistent spelling result");
+    const patterns: Partial<Record<Language, RegExp>> = { de: /^(?:der|die|das) \p{Lu}/u, fr: /^(?:(?:le|la) |l['’])\p{L}/u, it: /^(?:(?:il|lo|la) |l['’])\p{L}/u, es: /^(?:el|la) \p{L}/u };
+    if (nounSuggestion && !patterns[request.input.language]?.test(nounSuggestion)) throw new Error("Invalid noun suggestion");
+    return { spelling: value.spelling as WordCheckResult["spelling"], correctedWord, nounSuggestion };
+  }
   if (request.operation === "article") {
     if (!text(value.title, 2000) || !text(value.text, 2_000_000)) throw new Error("Invalid article result");
     const title = clean(value.title);
