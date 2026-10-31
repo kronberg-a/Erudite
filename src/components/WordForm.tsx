@@ -10,6 +10,7 @@ import type {
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
+import { suggestNounArticle } from "../services/nounArticle";
 type ExampleDraft = WordCard["examples"][number] & { id: string };
 const emptyExample = (): ExampleDraft => ({ id: crypto.randomUUID(), targetSentence: "", translatedSentence: "" });
 export function WordForm({
@@ -47,6 +48,10 @@ export function WordForm({
   );
   const [newFolder, setNewFolder] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
+  const [nounSuggestion, setNounSuggestion] = useState<string>();
+  const [checkingArticle, setCheckingArticle] = useState(false);
+  const nounController = useRef<AbortController | null>(null);
+  const acceptedNoun = useRef<{ word: string; language: Settings["targetLanguage"] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyExamples, setBusyExamples] = useState<string[]>([]);
   const [message, setMessage] = useState<"translateError" | "offline" | null>(
@@ -56,10 +61,27 @@ export function WordForm({
   const [savedWordId, setSavedWordId] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const sentenceControllers = useRef(new Map<string, AbortController>());
-  const manual = useRef(!!existing);
   const revision = useRef(0);
-  const request = async (text: string, force = false) => {
-    if (!text.trim() || (manual.current && !force)) return;
+  const nounContext = examples[0]?.targetSentence ?? "";
+  useEffect(() => {
+    setNounSuggestion(undefined);
+    setCheckingArticle(false);
+    if (acceptedNoun.current?.word === word && acceptedNoun.current.language === settings.targetLanguage) return;
+    if (!word.trim() || word === existing?.targetWord || settings.targetLanguage === "en" || settings.targetLanguage === "ru") return;
+    const abort = new AbortController();
+    nounController.current = abort;
+    const timer = setTimeout(() => {
+      if (abort.signal.aborted) return;
+      setCheckingArticle(true);
+      void suggestNounArticle(word, settings.targetLanguage, nounContext, abort.signal, settings.geminiApiKey)
+        .then((suggestion) => { if (!abort.signal.aborted) setNounSuggestion(suggestion); })
+        .catch(() => { /* Keep manual word entry available when analysis is offline. */ })
+        .finally(() => { if (!abort.signal.aborted) setCheckingArticle(false); });
+    }, 500);
+    return () => { clearTimeout(timer); abort.abort(); };
+  }, [word, nounContext, settings.targetLanguage, settings.geminiApiKey, existing?.targetWord]);
+  const request = async (text: string) => {
+    if (!text.trim()) return;
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
@@ -85,15 +107,6 @@ export function WordForm({
       if (!abort.signal.aborted) setBusy(false);
     }
   };
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void request(word);
-    }, 500);
-    return () => {
-      clearTimeout(timer);
-      controller.current?.abort();
-    }; /* word input is the only debounce trigger */
-  }, [word]); // eslint-disable-line
   useEffect(
     () => () => {
       controller.current?.abort();
@@ -135,6 +148,10 @@ export function WordForm({
     }
   };
   const save = () => {
+    acceptedNoun.current = null;
+    nounController.current?.abort();
+    setNounSuggestion(undefined);
+    setCheckingArticle(false);
     controller.current?.abort();
     sentenceControllers.current.forEach((controller) => controller.abort());
     sentenceControllers.current.clear();
@@ -199,7 +216,6 @@ export function WordForm({
       setMessage(null);
       setSaved(true);
       setSavedWordId(card.id);
-      manual.current = false;
       revision.current++;
       controller.current?.abort();
       setBusy(false);
@@ -248,8 +264,17 @@ export function WordForm({
           <span>{languageNames[settings.sourceLanguage]}</span>
         </div>
         <label htmlFor={`${id}-word`}>
-          {t("targetWord")}
-          <div className="input-action">
+          <span className="label-action">
+            {t("targetWord")}
+            <button
+              type="button"
+              className="inline-button"
+              disabled={!word.trim() || busy}
+              onClick={() => { void request(word); }}
+            >
+              {busy ? t("translating") : t("translate")}
+            </button>
+          </span>
             <input
               id={`${id}-word`}
               aria-label={t("targetWord")}
@@ -259,8 +284,9 @@ export function WordForm({
               value={word}
               lang={settings.targetLanguage}
               onChange={(e) => {
+                acceptedNoun.current = null;
+                controller.current?.abort();
                 setWord(e.target.value);
-                manual.current = false;
                 revision.current++;
                 setSaved(false);
                 setBusy(false);
@@ -269,18 +295,22 @@ export function WordForm({
                 if (!existing) setTranslation("");
               }}
             />
-            <button
-              type="button"
-              className="inline-button"
-              disabled={!word.trim() || busy}
-              onClick={() => {
-                void request(word, true);
-              }}
-            >
-              {busy ? t("translating") : t("translate")}
-            </button>
-          </div>
         </label>
+        {checkingArticle && <p className="form-message" role="status">{t("checkingArticle")}</p>}
+        {nounSuggestion && <div className="translation-chips" aria-live="polite">
+          <button type="button" onClick={() => {
+            acceptedNoun.current = { word: nounSuggestion, language: settings.targetLanguage };
+            nounController.current?.abort();
+            controller.current?.abort();
+            setBusy(false);
+            setWord(nounSuggestion);
+            setNounSuggestion(undefined);
+            revision.current++;
+            setSaved(false);
+          }}>
+            <Plus size={12} aria-hidden="true" />{t("useNounArticle").replace("{word}", nounSuggestion)}
+          </button>
+        </div>}
         <label>
           {t("translation")}
           <input
@@ -289,7 +319,6 @@ export function WordForm({
             value={translation}
             lang={settings.sourceLanguage}
             onChange={(e) => {
-              manual.current = true;
               revision.current++;
               setTranslation(e.target.value);
             }}
@@ -302,7 +331,6 @@ export function WordForm({
                 type="button"
                 key={a}
                 onClick={() => {
-                  manual.current = true;
                   revision.current++;
                   setTranslation((previous) =>
                     [

@@ -5,6 +5,7 @@ import {
   BookOpenText,
   ChevronDown,
   Layers,
+  Info,
   Moon,
   Settings2,
   ShieldCheck,
@@ -26,14 +27,16 @@ import { StudyView } from "./components/StudyView";
 import { CategoryView } from "./components/CategoryView";
 import { SettingsView } from "./components/SettingsView";
 import { ReaderView } from "./components/ReaderView";
+import { AboutView } from "./components/AboutView";
+import { BrandLogo } from "./components/BrandLogo";
 import { configureGemini, initializeGemini } from "./services/gemini";
 import { UiStateScope, clearPairUiState, readUiState, uiCount, uiObject, useStoredUiState, writeUiState } from "./hooks/useUiState";
-type Page = "learn" | "categories" | "reader" | "settings";
+type Page = "learn" | "categories" | "reader" | "settings" | "about";
 const initial = loadData();
 export default function App() {
   const [data, setData] = useState<AppData>(initial.data);
   const [storageError, setStorageError] = useState(initial.error);
-  const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings"].includes(value as string));
+  const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings", "about"].includes(value as string));
   const [generation, setGeneration] = useState(0);
   const [libraryWord, setLibraryWord] = useState<{ pairKey: string; wordId: string } | null>(null);
   const [practiceRequest, setPracticeRequest] = useStoredUiState<{
@@ -109,6 +112,7 @@ export default function App() {
     { id: "categories", icon: Layers },
     { id: "reader", icon: BookOpenText },
     { id: "settings", icon: Settings2 },
+    { id: "about", icon: Info },
   ] as const;
   return (
     <div className="app-shell">
@@ -121,12 +125,7 @@ export default function App() {
             navigate("learn");
           }}
         >
-          <span className="brand-mark">
-            E<span />
-          </span>
-          <span>
-            erudite<span className="brand-period">.</span>
-          </span>
+          <BrandLogo />
         </a>
         <p className="brand-tagline">{t("tagline")}</p>
         <p className="nav-caption">{t("workspace")}</p>
@@ -171,7 +170,7 @@ export default function App() {
             <span>/</span>
             <strong>{t(page)}</strong>
           </span>
-          <span className="mobile-brand">erudite.</span>
+          <span className="mobile-brand"><BrandLogo /></span>
           <div className="topbar-actions">
             <div className="header-language">
               <span className="language-code">
@@ -269,6 +268,7 @@ export default function App() {
             />
           )}
           {page === "reader" && <ReaderView pair={pair} settings={s} update={update} onPractice={practice} t={t} />}
+          {page === "about" && <AboutView t={t} theme={s.theme} onLearn={() => navigate("learn")} />}
           </UiStateScope.Provider>
         </main>
         <footer className="desktop-footer">

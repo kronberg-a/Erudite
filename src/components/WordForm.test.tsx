@@ -7,9 +7,11 @@ import { seedPair } from "../i18n/seedData";
 import { translator } from "../i18n/translations";
 import { defaultSettings } from "../services/storage";
 import { translate } from "../services/translator";
+import { suggestNounArticle } from "../services/nounArticle";
 import type { WordCard } from "../types";
 
 vi.mock("../services/translator", () => ({ translate: vi.fn() }));
+vi.mock("../services/nounArticle", () => ({ suggestNounArticle: vi.fn() }));
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let container: HTMLDivElement;
@@ -17,6 +19,7 @@ const update = vi.fn();
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  vi.mocked(suggestNounArticle).mockResolvedValue(undefined);
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -51,6 +54,76 @@ function submit() {
 function saved() {
   return update.mock.calls.at(-1)![0].words.at(-1) as WordCard;
 }
+
+describe("noun article suggestions", () => {
+  it("suggests an article after typing and saves the accepted noun with a manual translation", async () => {
+    vi.mocked(suggestNounArticle).mockResolvedValue("das Haus");
+    render();
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Word in the learning language"]')!;
+    fill(input, "Haus");
+    const translation = Array.from(container.querySelectorAll('label')).find((label) => label.textContent?.trim() === 'Translation')!.querySelector('input')!;
+    fill(translation, "house");
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(input.value).toBe("Haus");
+    expect(suggestNounArticle).toHaveBeenCalledWith("Haus", "de", "", expect.any(AbortSignal), defaultSettings.geminiApiKey);
+    click("Use das Haus");
+    expect(input.value).toBe("das Haus");
+    expect(translation.value).toBe("house");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(suggestNounArticle).toHaveBeenCalledTimes(1);
+    submit();
+    expect(saved().targetWord).toBe("das Haus");
+  });
+
+  it("keeps the accepted article when context changes and checks again after a manual word edit", async () => {
+    vi.mocked(suggestNounArticle).mockResolvedValue("das Haus");
+    render();
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Word in the learning language"]')!;
+    fill(input, "Haus");
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    click("Use das Haus");
+    fill(fields(0)[0], "Das Haus ist groß.");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(suggestNounArticle).toHaveBeenCalledTimes(1);
+    expect(container.textContent).not.toContain("Checking noun article");
+    fill(input, "Tür");
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(suggestNounArticle).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(suggestNounArticle).mock.calls[1][0]).toBe("Tür");
+  });
+
+  it("ignores a late suggestion after the user changes the noun", async () => {
+    let resolve!: (value: string) => void;
+    vi.mocked(suggestNounArticle).mockImplementation(() => new Promise((done) => { resolve = done; }));
+    vi.mocked(translate).mockResolvedValue({ primary: "house", alternatives: [] });
+    render();
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Word in the learning language"]')!;
+    fill(input, "Haus");
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    const signal = vi.mocked(suggestNounArticle).mock.calls[0][3]!;
+    fill(input, "Tür");
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolve("das Haus"));
+    expect(container.textContent).not.toContain("Use das Haus");
+    expect(input.value).toBe("Tür");
+  });
+});
+it("translates only when clicked, with the button beside the word label", async () => {
+  vi.mocked(translate).mockResolvedValue({ primary: "house", alternatives: [] });
+  render();
+  const input = container.querySelector<HTMLInputElement>('input[aria-label="Word in the learning language"]')!;
+  fill(input, "Haus");
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(translate).not.toHaveBeenCalled();
+  const labelRow = input.closest('label')!.querySelector('.label-action')!;
+  expect(labelRow.textContent).toContain("Word in the learning language");
+  expect(labelRow.querySelector('button')!.textContent).toBe("Translate");
+  await act(async () => click("Translate"));
+  expect(translate).toHaveBeenCalledWith("Haus", "de", "en", expect.any(AbortSignal));
+  const translation = Array.from(container.querySelectorAll('label')).find((label) => label.textContent?.trim() === 'Translation')!.querySelector('input')!;
+  expect(translation.value).toBe("house");
+});
+
 describe("word examples", () => {
   it("saves three example pairs and resets the new-word form", () => {
     render();
