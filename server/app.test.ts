@@ -13,6 +13,8 @@ beforeAll(async () => {
   await mkdir(join(root, "dist"));
   await writeFile(join(root, "dist", "index.html"), "<html>Erudite</html>");
   await writeFile(join(root, "dist", "app.js"), "console.log('app')");
+  await writeFile(join(root, "dist", "manifest.webmanifest"), "{}");
+  await writeFile(join(root, "dist", "sw.js"), "// worker");
   await writeFile(join(root, "private.txt"), "private");
   server = createApp(join(root, "dist"));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -38,6 +40,13 @@ it("provides health checks and routes the existing APIs", async () => {
   const gemini = await fetch(`${base}/api/gemini`);
   expect(gemini.status).toBe(200);
   expect(typeof (await gemini.json()).configured).toBe("boolean");
+});
+it("serves installation metadata and revalidates service worker updates", async () => {
+  const manifest = await fetch(`${base}/manifest.webmanifest`);
+  expect(manifest.headers.get("content-type")).toContain("application/manifest+json");
+  const worker = await fetch(`${base}/sw.js`);
+  expect(worker.headers.get("content-type")).toContain("text/javascript");
+  expect(worker.headers.get("cache-control")).toBe("no-cache");
 });
 it("blocks traversal, malformed paths, unknown files and unsupported methods", async () => {
   expect((await fetch(`${base}/..%2fprivate.txt`)).status).toBe(403);

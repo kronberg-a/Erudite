@@ -21,12 +21,13 @@ export default defineConfig(({ command, mode }) => {
         order: "pre",
         handler(html) {
           return html
+            .replace(/<script\b(?=[^>]*\bdata-pwa\b)[^>]*>[\s\S]*?<\/script>/, "")
             .replace(/<link\b(?=[^>]*\bdata-app-style\b)[^>]*>/, "")
             .replace(
               /<script\b(?=[^>]*\bdata-app-entry\b)[^>]*>[\s\S]*?<\/script>/,
               '<script type="module" src="/src/main.tsx"></script>',
             )
-            .replace("./public/favicon.svg", "./favicon.svg");
+            .replaceAll("./public/", "./");
         },
       },
     },

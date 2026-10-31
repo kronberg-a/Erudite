@@ -28,6 +28,17 @@ Deploy the generated `dist/` directory to any static host. Relative asset paths 
 
 `pnpm build` refreshes the checked-in `public/standalone/` bundles and packages `dist/`. Commit regenerated bundles with source changes so direct opening stays current. Vite development serves the TypeScript entry instead, with hot reload. The production build uses a classic script bundle rather than browser ES modules, which cannot be loaded reliably from `file://` URLs.
 
+## Install on Android
+
+Open the deployed HTTPS site in Chrome, then choose **Install app** (or
+**Add to Home screen → Install**) from the browser menu. Erudite opens in its
+own window and can reopen offline after the first complete online visit.
+Vocabulary and progress stay in the browser's existing local storage for that
+site. Article URL imports, online translations and Gemini require internet.
+The offline shell is versioned per build; reopen the app online to check for
+updates, and close all its windows to let a waiting update activate. Installation
+is optional and there are no installation prompts inside the application.
+
 ## Deploy on Render
 
 Create a Node Web Service from this repository (or use `render.yaml`). Use
