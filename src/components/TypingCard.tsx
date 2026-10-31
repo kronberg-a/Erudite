@@ -118,7 +118,11 @@ export function TypingCard({
   const [selected, setSelected] = useState<number[]>(resume?.selected ?? []);
   const inputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
   const submitted = useRef(!!evaluation);
+  useEffect(() => {
+    if (evaluation) resultRef.current?.focus({ preventScroll: true });
+  }, [evaluation]);
   useEffect(() => {
     if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected });
   }, [snapshotKey, resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected]);
@@ -254,6 +258,7 @@ export function TypingCard({
               ref={inputRef}
               className={`typing-input ${failedInput !== null ? "typing-mistake" : ""}`}
               type="text"
+              enterKeyHint="done"
               value={input}
               maxLength={200}
               lang={settings.targetLanguage}
@@ -357,7 +362,8 @@ export function TypingCard({
           </>}
         </>
       ) : (
-        <div className="typing-result">
+        <div ref={resultRef} className="typing-result" tabIndex={-1} role="region"
+          aria-label={t(evaluation === "CORRECT" ? "correct" : evaluation === "ASSISTED" ? "assisted" : "incorrect")}>
           <div className="card-source-prompt"><h2 lang={settings.sourceLanguage}>{card.translations.join(" · ")}</h2></div>
           <div className="typing-correct-word card-prompt">
             <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>

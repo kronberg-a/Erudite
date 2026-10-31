@@ -96,6 +96,9 @@ it("releases mobile viewport overrides on desktop and cleans up scheduled update
   window.dispatchEvent(new Event("resize")); frame();
   expect(document.documentElement.style.getPropertyValue("--visible-viewport-height")).toBe("");
   expect(document.documentElement.hasAttribute("data-keyboard-open")).toBe(false);
+  vi.stubGlobal("innerWidth", 390); vi.stubGlobal("innerHeight", 568);
+  keyboard(568);
+  expect(document.documentElement.dataset.keyboardOpen).toBe("false");
   const cancel = vi.spyOn(window, "cancelAnimationFrame");
   viewport.dispatchEvent(new Event("resize"));
   act(() => root.render(null));

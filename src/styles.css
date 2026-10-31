@@ -253,6 +253,7 @@
   margin: 20px 0;
   text-align: center;
 }
+.typing-result:focus { outline: none; }
 .typing-correct-word h2 {
   font-family: Georgia, serif;
   font-weight: 400;

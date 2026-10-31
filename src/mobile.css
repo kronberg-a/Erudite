@@ -188,6 +188,8 @@
   html[data-keyboard-open="true"] .study-view[data-active="true"] .typing-card { overflow-y: auto; touch-action: pan-y; }
   html[data-keyboard-open="true"] .study-view[data-active="true"] .typing-entry { flex: 0 0 auto; overflow: visible; }
   html[data-keyboard-open="true"] .study-view[data-active="true"] .typing-prompt { flex-shrink: 0; }
+  html[data-keyboard-open="true"] .study-view[data-active="true"] .typing-controls .primary-button { display: none; }
+  html[data-keyboard-open="true"] .study-view[data-active="true"] .typing-controls { grid-template-columns: 44px; justify-content: end; }
   html[data-keyboard-open="true"] .study-view[data-active="true"] .card-top { flex-basis: 44px; height: 44px; padding-top: 8px; }
 }
 

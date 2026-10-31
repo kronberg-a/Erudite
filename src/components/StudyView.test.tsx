@@ -392,7 +392,7 @@ describe("typing review lifecycle", () => {
     expect(container.querySelectorAll(".action-bar button")).toHaveLength(2);
     expect(container.querySelector(".action-next")).toBeNull();
     expect(container.querySelector(".action-reveal")).toBeNull();
-    expect(document.activeElement).toBe(button("I know"));
+    expect(document.activeElement).toBe(container.querySelector(".typing-result"));
     expect(container.textContent).not.toContain("A coffee and a coffee.");
     expect(speak).toHaveBeenCalledTimes(1);
     expect(updates).not.toHaveBeenCalled();
@@ -406,6 +406,20 @@ describe("typing review lifecycle", () => {
       status: "LEARNING",
       step: 1,
     });
+  });
+  it.each(["Enter", " "])("keeps %s grading available without automatically focusing a grade button", (shortcut) => {
+    setup();
+    const field = input("café");
+    expect(field.getAttribute("enterkeyhint")).toBe("done");
+    key(field, "Enter");
+    const result = container.querySelector<HTMLElement>(".typing-result")!;
+    expect(document.activeElement).toBe(result);
+    expect(result.getAttribute("tabindex")).toBe("-1");
+    expect(result.getAttribute("aria-label")).toBe("Correct");
+    expect(Array.from(container.querySelectorAll('.action-bar button'))).not.toContain(document.activeElement);
+    expect(updates).not.toHaveBeenCalled();
+    key(result, shortcut);
+    expect(updates).toHaveBeenCalledTimes(1);
   });
   it("gives hinted correct answers a step-preserving repeat and resets the same card turn", () => {
     setup({ status: "LEARNING", step: 1, repCount: 2 });

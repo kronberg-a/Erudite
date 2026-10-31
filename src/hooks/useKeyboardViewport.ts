@@ -46,7 +46,13 @@ export function useKeyboardViewport() {
     };
     const update = () => {
       frame = null;
-      if (window.innerWidth >= 768) { restore(); return; }
+      if (window.innerWidth >= 768) {
+        keyboardOpen = false;
+        baselineHeight = Math.max(window.innerHeight, viewport?.height ?? 0);
+        lastWidth = window.innerWidth;
+        restore();
+        return;
+      }
       const height = viewport?.height ?? window.innerHeight;
       const top = viewport?.offsetTop ?? 0;
       if (height <= 0) return;

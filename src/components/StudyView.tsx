@@ -125,7 +125,6 @@ export function StudyView({
   const [typingInput, setTypingInput] = useState<TypingInput>(resume?.typingInput ?? "KEYBOARD");
   const [inputPractice, setInputPractice] = useState(resume?.inputPractice === true);
   const [turn, setTurn] = useState(resume?.turn ?? 0);
-  const gradeButton = useRef<HTMLButtonElement>(null);
   const goalButton = useRef<HTMLButtonElement>(null);
   const assistedTurn = useRef(false);
   const evaluated = useRef(!!resume?.evaluation);
@@ -188,9 +187,6 @@ export function StudyView({
     setRevealed(false);
     setAudioError(false);
   };
-  useEffect(() => {
-    if (evaluation) gradeButton.current?.focus({ preventScroll: true });
-  }, [evaluation]);
   const cardStatusLabel = card ? t(card.status === "NEW" ? "new" : card.status === "LEARNING" ? "learning" : card.status === "MASTERED" ? "mastered" : "review") + (card.status === "LEARNING" ? ` ${card.step}/3` : "") : "";
   const category =
     card && pair.categories.find((c) => card.categoryIds.includes(c.id));
@@ -550,7 +546,6 @@ export function StudyView({
             <div className={`action-dock ${typing ? "typing-actions" : ""}`} role="group">
               <div className={`action-bar ${typing ? "typing-actions" : ""}`}>
                 <button
-                  ref={typing && evaluation && evaluation !== "CORRECT" ? gradeButton : undefined}
                   className={`action-repeat ${typing && evaluation && evaluation !== "CORRECT" ? "preselected" : ""}`}
                   onClick={() => action("repeat")}
                 >
@@ -559,7 +554,6 @@ export function StudyView({
                 </button>
 
                 <button
-                  ref={typing && evaluation === "CORRECT" ? gradeButton : undefined}
                   className={`action-know ${typing && evaluation === "CORRECT" ? "preselected" : ""}`}
                   onClick={() => action("know")}
                 >
