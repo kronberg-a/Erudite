@@ -14,6 +14,9 @@ importers:
       ipaddr.js:
         specifier: ^2.5.0
         version: 2.5.0
+      jsdom:
+        specifier: 26.1.0
+        version: 26.1.0
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.3.1)
@@ -42,9 +45,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.22
         version: 10.6.1(postcss@8.5.31)
-      jsdom:
-        specifier: 26.1.0
-        version: 26.1.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       postcss:
         specifier: ^8.5.6
         version: 8.5.31

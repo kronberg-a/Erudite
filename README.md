@@ -28,6 +28,23 @@ Deploy the generated `dist/` directory to any static host. Relative asset paths 
 
 `pnpm build` refreshes the checked-in `public/standalone/` bundles and packages `dist/`. Commit regenerated bundles with source changes so direct opening stays current. Vite development serves the TypeScript entry instead, with hot reload. The production build uses a classic script bundle rather than browser ES modules, which cannot be loaded reliably from `file://` URLs.
 
+## Deploy on Render
+
+Create a Node Web Service from this repository (or use `render.yaml`). Use
+`pnpm install --frozen-lockfile && pnpm build` as the build command and
+`pnpm start` as the start command, with Node 22.16 or newer. The production
+server binds to `0.0.0.0:$PORT` (default 3000), serves `dist/`, and mounts
+the article and optional Gemini APIs at `/api/article` and `/api/gemini`.
+Use `/healthz` for the health check. No API key is needed for article extraction.
+Optionally set `GEMINI_API_KEY` in Render's environment settings for Gemini.
+The APIs share a limit of four concurrent requests and 120 requests per minute
+per server instance. Stable frontend assets revalidate on reload.
+
+Open the Render address to use URL import; GitHub Pages remains static.
+Export your backup from Settings on the old address and import it on the new
+address because browser storage is isolated by origin. Free Render services
+sleep when idle; opening the site first lets the server wake before importing.
+
 ## Learning
 
 Choose a learning language in the header, and your base and interface languages in Settings. English, Russian, German, French, Italian, and Spanish are supported independently. Every directed language pair has its own words, folders, and progress. A global review-order counter records the relative order of committed grades. A curated set of 32 words with aligned example sentences is generated for each of the 30 pairs. Folder names describe the included starter material; this is not a 500-word corpus.
