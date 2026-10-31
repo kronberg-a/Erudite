@@ -140,6 +140,27 @@ function changeValue(input: HTMLInputElement | HTMLSelectElement, value: string)
     input.dispatchEvent(new Event(input instanceof HTMLInputElement ? "input" : "change", { bubbles: true }));
   });
 }
+it("remembers collapsed folders without changing the selected vocabulary or study preferences", () => {
+  const original = structuredClone(pair);
+  render();
+  act(() => folder("Core").click());
+  const expectedRows = rows();
+  const toggle = () => host.querySelector<HTMLButtonElement>('.folder-section-toggle')!;
+  const grid = () => host.querySelector<HTMLElement>('#vocabulary-folders')!;
+  expect(grid().hidden).toBe(true);
+  act(() => toggle().click());
+  expect(grid().hidden).toBe(false);
+  act(() => toggle().click());
+  expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  act(() => root.unmount());
+  root = createRoot(host);
+  render();
+  expect(grid().hidden).toBe(true);
+  expect(folder("Core").checked).toBe(true);
+  expect(rows()).toEqual(expectedRows);
+  expect(pair).toEqual(original);
+  expect(practice).not.toHaveBeenCalled();
+});
 it("renames a folder without changing its words or selected filter", () => {
   const updates = mutableLibrary();
   act(() => folder("Core").click());

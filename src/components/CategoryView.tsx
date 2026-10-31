@@ -50,6 +50,25 @@ export function CategoryView({
   const [selectedFolders, setSelectedFolders] = useUiState<string[]>("vocabulary:folders", legacyFolder === "all" ? [] : [legacyFolder], (value) => Array.isArray(value) && value.every((id) => typeof id === "string" && pair.categories.some((category) => category.id === id)));
   const [showChallenging, setShowChallenging] = useUiState("vocabulary:challenging", false, uiBoolean);
   const [foldersExpanded, setFoldersExpanded] = useUiState("vocabulary:folders-expanded", false, uiBoolean);
+  const folderPicker = useRef<HTMLDetailsElement>(null);
+  const sizeFolderPicker = () => {
+    const picker = folderPicker.current;
+    if (!picker?.open) return;
+    const anchor = picker.querySelector("summary")!.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    const navigation = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+    const bottom = navigation?.height ? Math.min(viewportBottom, navigation.top) : viewportBottom;
+    picker.style.setProperty("--folder-picker-space", `${Math.max(64, bottom - anchor.bottom - 20)}px`);
+  };
+  useEffect(() => {
+    window.addEventListener("resize", sizeFolderPicker);
+    window.visualViewport?.addEventListener("resize", sizeFolderPicker);
+    return () => {
+      window.removeEventListener("resize", sizeFolderPicker);
+      window.visualViewport?.removeEventListener("resize", sizeFolderPicker);
+    };
+  }, []);
   const toggleFolder = (id: string) => setSelectedFolders((ids) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]);
   const [folderName, setFolderName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -199,14 +218,14 @@ export function CategoryView({
         </form>
       )}
       <section className="library-folders" data-expanded={foldersExpanded}>
-      <button type="button" className="mobile-folder-toggle" aria-expanded={foldersExpanded}
+      <button type="button" className="folder-section-toggle" aria-expanded={foldersExpanded}
         aria-controls="vocabulary-folders" onClick={() => setFoldersExpanded((value) => !value)}>
         <Folder size={19} aria-hidden="true" />
         <span>{t("folder")}</span>
-        <span className="mobile-folder-count">{pair.categories.length.toLocaleString(settings.interfaceLanguage)}</span>
+        <span className="folder-section-count">{pair.categories.length.toLocaleString(settings.interfaceLanguage)}</span>
         <ChevronDown size={18} aria-hidden="true" />
       </button>
-      <div className="category-grid" id="vocabulary-folders">
+      <div className="category-grid" id="vocabulary-folders" hidden={!foldersExpanded}>
         {pair.categories.map((category, index) => {
           const words = pair.words.filter((w) =>
             w.categoryIds.includes(category.id),
@@ -333,7 +352,7 @@ export function CategoryView({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <details className="vocabulary-folder-picker" onBlur={(event) => {
+        <details ref={folderPicker} className="vocabulary-folder-picker" onToggle={sizeFolderPicker} onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false;
         }} onKeyDown={(event) => {
           if (event.key === "Escape") { event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }

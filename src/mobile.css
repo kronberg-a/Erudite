@@ -1,5 +1,5 @@
 /* Mobile composition; shared content and desktop layout remain in styles.css. */
-.mobile-about, .mobile-folder-toggle, .mobile-word-status { display: none; }
+.mobile-about, .mobile-word-status { display: none; }
 .word-row-meta { display: contents; }
 
 @media (max-width: 767px) {
@@ -74,24 +74,14 @@
   .page-categories :is(.vocabulary-folder-picker, .challenging-filter) { width: 100%; min-width: 0; max-width: none; }
   .page-categories .challenging-filter { font-size: 12px; padding: 10px; gap: 6px; }
   .vocabulary-folder-picker summary { min-height: 48px; font-size: 13px; }
-  .library-folders { margin-bottom: 18px; }
-  .mobile-folder-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    min-height: 52px;
-    padding: 12px 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--surface);
-    text-align: left;
-    font-size: 14px;
+  /* The picker occupies half the toolbar; its wider menu must grow rightward. */
+  .vocabulary-folder-picker[open] .vocabulary-folder-options {
+    left: 0;
+    right: auto;
+    max-width: calc(100vw - 32px);
+    transform-origin: top left;
   }
-  .mobile-folder-count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .mobile-folder-toggle > svg:last-child { transition: transform var(--motion-medium) var(--motion-ease); }
-  .mobile-folder-toggle[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-  .library-folders[data-expanded="false"] .category-grid { display: none; }
+  .library-folders { margin-bottom: 18px; }
   .library-folders[data-expanded="true"] .category-grid { margin-top: 12px; }
   .category-panel { padding: 18px; }
   .folder-reset-actions .text-button { min-height: 44px; font-size: 12px; }
