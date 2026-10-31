@@ -1629,9 +1629,15 @@ button.word-detail:hover strong {
   background: #02061788;
   backdrop-filter: blur(3px);
 }
+.edit-dialog .word-form-wrap,
+.edit-dialog .word-form {
+  max-height: inherit;
+}
 .edit-dialog .word-form {
   border-color: var(--border);
-  max-height: 90dvh;
+}
+.edit-dialog:has(.word-form) {
+  overflow: hidden;
 }
 .settings-columns {
   display: grid;

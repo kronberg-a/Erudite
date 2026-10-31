@@ -1,0 +1,327 @@
+/* Fast feedback, medium reveals, and quieter page/panel entrances. */
+:root {
+  --motion-fast: 150ms;
+  --motion-medium: 300ms;
+  --motion-slow: 400ms;
+  --motion-popup: 360ms;
+  --motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --motion-settle: cubic-bezier(0.16, 0.85, 0.3, 1);
+  transition: background-color var(--motion-medium) ease-out,
+    color var(--motion-medium) ease-out;
+}
+
+/* Explicit properties avoid animating layout or chasing pointer movement. */
+:where(button, a, summary, input, select, textarea, .panel, .topbar,
+  .sidebar, .bottom-nav, .main-shell, .flashcard, .session-settings,
+  .word-row, .theme-preview, .session-mode-option, .recall-choices button) {
+  transition-property: background-color, color, border-color, box-shadow, opacity;
+  transition-duration: var(--motion-medium);
+  transition-timing-function: var(--motion-ease);
+}
+
+/* Specific controls opt into press movement; selectable article text stays still. */
+:is(.primary-button, .outline-button, .icon-button, .audio-button,
+  .action-dock button, .recall-choices button, .letter-tile, .bottom-nav button) {
+  transition: background-color var(--motion-fast) ease-out,
+    color var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out,
+    opacity var(--motion-fast) ease-out, translate var(--motion-fast) ease-out,
+    scale var(--motion-fast) ease-out;
+}
+:is(.primary-button, .outline-button, .icon-button, .audio-button,
+  .action-dock button, .recall-choices button, .letter-tile, .bottom-nav button):active:not(:disabled) {
+  scale: 0.97;
+}
+
+/* Only animate newly mounted page content, never the scrolling container.
+   Opacity doesn't create a containing block for fixed translation popups. */
+.main-content > :is(.study-view, .category-grid, .word-table, .library-toolbar,
+  .reader-view, .settings-columns, .stats-view, .about-view) {
+  animation: surface-fade var(--motion-medium) ease-out;
+}
+.page-heading {
+  animation: surface-arrive var(--motion-slow) var(--motion-ease);
+}
+.edit-dialog[open] {
+  transform-origin: 50% 60%;
+  animation: dialog-arrive var(--motion-slow) var(--motion-settle);
+}
+.edit-dialog[open]::backdrop {
+  animation: surface-fade var(--motion-popup) var(--motion-ease);
+}
+:is(.word-actions-menu, .vocabulary-folder-picker[open] .vocabulary-folder-options,
+  .card-menu[open] .card-menu-content) {
+  transform-origin: top right;
+  animation: menu-unfold var(--motion-popup) var(--motion-settle);
+}
+.reader-translation-popup {
+  transform-origin: bottom center;
+  animation: translation-arrive var(--motion-popup) var(--motion-settle);
+}
+.word-actions-menu[data-side="top"][role="menu"] {
+  transform-origin: bottom right;
+  --menu-travel: 6px;
+}
+
+/* A short sequence establishes hierarchy without delaying interaction. Only
+   small surfaces move; page roots stay untransformed for fixed popups. */
+:is(.category-grid, .stats-summary, .about-principles) > .panel,
+.settings-columns > .panel {
+  --entrance-delay: 0ms;
+  animation: panel-arrive var(--motion-slow) var(--motion-ease) var(--entrance-delay) backwards;
+}
+:is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(2) {
+  --entrance-delay: 24ms;
+}
+:is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(3) {
+  --entrance-delay: 48ms;
+}
+:is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(n + 4) {
+  --entrance-delay: 72ms;
+}
+.edit-dialog[open] :is(.dialog-heading, .vocabulary-action-content h2) {
+  animation: surface-arrive var(--motion-medium) var(--motion-ease) 35ms backwards;
+}
+.edit-dialog[open] :is(.word-form-actions, .vocabulary-action-buttons, .delete-folder-actions) {
+  animation: surface-arrive var(--motion-medium) var(--motion-ease) 70ms backwards;
+}
+:is(.word-actions-menu, .card-menu[open] .card-menu-content) > button {
+  --item-delay: 15ms;
+  animation: menu-item-arrive var(--motion-medium) var(--motion-ease) var(--item-delay) backwards;
+}
+:is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(2) { --item-delay: 30ms; }
+:is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(3) { --item-delay: 45ms; }
+:is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(n + 4) { --item-delay: 60ms; }
+.card-answer .context, .typing-result .context {
+  animation: surface-arrive var(--motion-medium) var(--motion-ease) 45ms backwards;
+}
+/* Ease the backdrop away after the native dialog releases focus. Browsers
+   without discrete transitions retain their normal immediate dismissal. */
+@supports (transition-behavior: allow-discrete) {
+  .edit-dialog {
+    transition: display var(--motion-medium) allow-discrete,
+      overlay var(--motion-medium) allow-discrete;
+  }
+  .edit-dialog::backdrop {
+    background-color: transparent;
+    backdrop-filter: blur(0);
+    transition: background-color var(--motion-medium) var(--motion-ease),
+      backdrop-filter var(--motion-medium) var(--motion-ease),
+      display var(--motion-medium) allow-discrete,
+      overlay var(--motion-medium) allow-discrete;
+  }
+  .edit-dialog[open]::backdrop {
+    background-color: #02061788;
+    backdrop-filter: blur(3px);
+  }
+}
+
+:is(.nav-item, .reader-word, .word-actions-menu button, .card-menu-content button,
+  .vocabulary-folder-picker summary, .vocabulary-folder-options label, .folder-picker-chevron) {
+  transition-duration: var(--motion-medium);
+  transition-timing-function: var(--motion-ease);
+}
+:is(.typing-result, .typing-entry, .recall-choices, .success-message, .error-message) {
+  animation: surface-fade var(--motion-medium) ease-out;
+}
+.study-view[data-active="true"] .card-answer {
+  animation: surface-arrive var(--motion-medium) var(--motion-ease);
+}
+.flashcard:is(.advance-know, .advance-repeat, .advance-master, .reverse) {
+  animation-duration: var(--motion-medium);
+  animation-timing-function: var(--motion-ease);
+}
+.flashcard {
+  transition: transform var(--motion-medium) var(--motion-ease),
+    border-color var(--motion-fast) ease-out,
+    background-color var(--motion-medium) ease-out;
+}
+.flashcard.dragging {
+  animation: none;
+  transition: border-color var(--motion-fast) ease-out;
+  will-change: transform;
+}
+.nav-active-mark, .bottom-nav .active svg {
+  animation: selection-settle var(--motion-medium) var(--motion-settle);
+}
+.typing-attempts span {
+  transition: background-color var(--motion-fast) ease-out;
+}
+.progress-track > div, .stats-maturity-bar > *, .stats-forecast-bars span {
+  transition: width var(--motion-slow) var(--motion-ease),
+    height var(--motion-slow) var(--motion-ease),
+    background-color var(--motion-medium) ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.primary-button, .outline-button, .recall-choices button):hover:not(:disabled) {
+    translate: 0 -1px;
+  }
+  .category-panel {
+    transition: border-color var(--motion-medium) ease-out,
+      background-color var(--motion-medium) ease-out,
+      box-shadow var(--motion-medium) ease-out;
+  }
+  .category-panel:hover {
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    box-shadow: 0 4px 12px #0f172a06;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --motion-fast: 130ms;
+    --motion-medium: 420ms;
+    --motion-slow: 560ms;
+    --motion-popup: 520ms;
+    --motion-ease: cubic-bezier(0.22, 0.75, 0.25, 1);
+    --motion-settle: cubic-bezier(0.18, 0.8, 0.25, 1);
+  }
+  /* Mobile motion has more travel and a longer deceleration. Pointer tracking
+     and pressed-state feedback remain immediate. */
+  .page-heading {
+    animation-name: mobile-heading-arrive;
+  }
+  :is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel {
+    animation-name: mobile-panel-arrive;
+  }
+  :is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(2) {
+    --entrance-delay: 40ms;
+  }
+  :is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(3) {
+    --entrance-delay: 80ms;
+  }
+  :is(.category-grid, .stats-summary, .about-principles, .settings-columns) > .panel:nth-child(n + 4) {
+    --entrance-delay: 120ms;
+  }
+  .main-content > .library-toolbar {
+    animation: mobile-panel-arrive var(--motion-slow) var(--motion-ease) 60ms backwards;
+  }
+  .edit-dialog[open] {
+    transform-origin: bottom center;
+    animation: mobile-sheet-arrive var(--motion-popup) var(--motion-settle);
+  }
+  .edit-dialog[open] :is(.dialog-heading, .vocabulary-action-content h2) {
+    animation-delay: 65ms;
+  }
+  .edit-dialog[open] :is(.word-form-actions, .vocabulary-action-buttons, .delete-folder-actions) {
+    animation-delay: 110ms;
+  }
+  :is(.word-actions-menu, .vocabulary-folder-picker[open] .vocabulary-folder-options,
+    .card-menu[open] .card-menu-content) {
+    animation-name: mobile-menu-arrive;
+  }
+  :is(.word-actions-menu, .card-menu[open] .card-menu-content) > button {
+    --item-delay: 25ms;
+  }
+  :is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(2) { --item-delay: 50ms; }
+  :is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(3) { --item-delay: 75ms; }
+  :is(.word-actions-menu, .card-menu[open] .card-menu-content) > button:nth-child(n + 4) { --item-delay: 100ms; }
+  .reader-selection-bar:not(.reader-translation-popup), .reader-translation-popup {
+    transform-origin: bottom center;
+    animation: mobile-translation-arrive var(--motion-popup) var(--motion-settle);
+  }
+  .reader-translation-popup .reader-popup-actions {
+    animation: surface-arrive var(--motion-medium) var(--motion-ease) 90ms backwards;
+  }
+  .bottom-nav button { position: relative; }
+  .bottom-nav button.active::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - 9px);
+    bottom: 0;
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transform-origin: center;
+    animation: mobile-nav-mark var(--motion-medium) var(--motion-ease);
+  }
+  :is(.primary-button, .outline-button, .icon-button, .audio-button,
+    .action-dock button, .recall-choices button, .letter-tile, .bottom-nav button):active:not(:disabled) {
+    transition-duration: 80ms;
+    scale: 0.975;
+  }
+  /* Prevent iOS focus zoom from jumping the page while entering text. */
+  input:not([type="checkbox"]):not([type="radio"]), textarea {
+    font-size: max(16px, 1em);
+  }
+  .main-content { scroll-padding-block: 20px 104px; }
+  :is(.word-form-fields, .reader-popup-content, .word-actions-menu, .vocabulary-folder-options) {
+    scroll-padding-block: 12px;
+  }
+}
+
+@keyframes surface-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes surface-arrive {
+  from { opacity: 0; translate: 0 6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes dialog-arrive {
+  from { opacity: 0; translate: 0 18px; scale: 0.965; }
+  75% { opacity: 1; translate: 0 -1px; scale: 1; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes mobile-sheet-arrive {
+  from { opacity: 0; translate: 0 36px; scale: 0.985; }
+  80% { opacity: 1; translate: 0 -1px; scale: 1; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes mobile-heading-arrive {
+  from { opacity: 0; translate: 0 12px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes mobile-panel-arrive {
+  from { opacity: 0; translate: 0 16px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes mobile-menu-arrive {
+  from { opacity: 0; translate: 0 var(--menu-travel, -6px); scale: 0.97 0.94; }
+  80% { opacity: 1; translate: 0 0; scale: 1; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes mobile-translation-arrive {
+  from { opacity: 0; translate: 0 22px; scale: 0.985; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes mobile-nav-mark {
+  from { opacity: 0; scale: 0.25 1; }
+  to { opacity: 1; scale: 1; }
+}
+@keyframes menu-unfold {
+  from { opacity: 0; translate: 0 -4px; scale: 0.96 0.94; }
+  75% { opacity: 1; translate: 0 0; scale: 1.003; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes translation-arrive {
+  from { opacity: 0; translate: 0 14px; scale: 0.98; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes panel-arrive {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes menu-item-arrive {
+  from { opacity: 0; translate: 4px 0; }
+  to { opacity: 1; translate: 0 0; }
+}
+@keyframes selection-settle {
+  from { opacity: 0.5; scale: 0.8; translate: 0 2px; }
+  to { opacity: 1; scale: 1; translate: 0 0; }
+}
+
+/* Keep feedback immediate and remove spatial motion when requested. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  :is(.primary-button, .outline-button, .icon-button, .audio-button,
+    .action-dock button, .recall-choices button, .letter-tile, .bottom-nav button) {
+    translate: none !important;
+    scale: none !important;
+  }
+}

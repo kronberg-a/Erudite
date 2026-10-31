@@ -65,9 +65,20 @@ export default function App() {
     documentScroller.scrollTop = position.document;
     if (mainScroller) mainScroller.scrollTop = position.main;
     const savePosition = () => writeUiState(scrollKey, { document: Math.round(documentScroller.scrollTop), main: Math.round(mainScroller?.scrollTop ?? 0) });
-    window.addEventListener("scroll", savePosition, true);
+    // Persist after scrolling settles instead of blocking every scroll event.
+    let saveTimer: number | undefined;
+    const scheduleSave = () => {
+      window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(savePosition, 150);
+    };
+    window.addEventListener("scroll", scheduleSave, { capture: true, passive: true });
     window.addEventListener("pagehide", savePosition);
-    return () => { savePosition(); window.removeEventListener("scroll", savePosition, true); window.removeEventListener("pagehide", savePosition); };
+    return () => {
+      window.clearTimeout(saveTimer);
+      savePosition();
+      window.removeEventListener("scroll", scheduleSave, true);
+      window.removeEventListener("pagehide", savePosition);
+    };
   }, [key, page, generation]);
   useEffect(() => {
     if (initial.error && data === initial.data) return;
@@ -178,6 +189,10 @@ export default function App() {
           </span>
           <span className="mobile-brand"><BrandLogo /></span>
           <div className="topbar-actions">
+            <button className="icon-button mobile-about" aria-label={t("about")} title={t("about")}
+              aria-current={page === "about" ? "page" : undefined} onClick={() => navigate("about")}>
+              <Info size={20} />
+            </button>
             <div className="header-language">
               <span className="language-code">
                 {s.targetLanguage.toUpperCase()}
@@ -290,7 +305,7 @@ export default function App() {
         </footer>
       </div>
       <nav className="bottom-nav" aria-label={t("workspace")}>
-        {nav.map(({ id, icon: Icon }) => (
+        {nav.filter(({ id }) => id !== "about").map(({ id, icon: Icon }) => (
           <button
             key={id}
             className={page === id ? "active" : ""}

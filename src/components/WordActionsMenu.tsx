@@ -12,7 +12,7 @@ export function WordActionsMenu({ word, t, onAction }: {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [position, setPosition] = useState({ top: 0, left: 0, below: true });
   const items = [
     { action: "reset", label: "reset", icon: RotateCcw },
     { action: "practice", label: "addToPractice", icon: BookOpen },
@@ -24,10 +24,13 @@ export function WordActionsMenu({ word, t, onAction }: {
   useLayoutEffect(() => {
     if (!open || !trigger.current || !menu.current) return;
     const anchor = trigger.current.getBoundingClientRect();
-    const box = menu.current.getBoundingClientRect();
+    // Measure layout dimensions, independent of the entrance animation's scale.
+    const box = { width: menu.current.offsetWidth, height: menu.current.offsetHeight };
+    const below = anchor.bottom + box.height + 8 <= window.innerHeight;
     setPosition({
       left: Math.max(12, Math.min(anchor.right - box.width, window.innerWidth - box.width - 12)),
-      top: Math.max(12, anchor.bottom + box.height + 8 <= window.innerHeight ? anchor.bottom + 6 : anchor.top - box.height - 6),
+      top: Math.max(12, below ? anchor.bottom + 6 : anchor.top - box.height - 6),
+      below,
     });
     menu.current.querySelector<HTMLButtonElement>("button")?.focus();
   }, [open]);
@@ -57,7 +60,8 @@ export function WordActionsMenu({ word, t, onAction }: {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setOpen(true); }
       }}><MoreHorizontal size={20} aria-hidden="true" /></button>
     {open && createPortal(<div id={id} ref={menu} className="word-actions-menu" role="menu"
-      aria-label={`${t("wordActions")}: ${word}`} style={position}
+      aria-label={`${t("wordActions")}: ${word}`} data-side={position.below ? "bottom" : "top"}
+      style={{ top: position.top, left: position.left }}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
       onKeyDown={(event) => {
         const buttons = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);

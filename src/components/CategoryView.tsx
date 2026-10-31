@@ -49,6 +49,7 @@ export function CategoryView({
   const legacyFolder = readUiState(useUiKey("vocabulary:folder"), "all", (value) => value === "all" || pair.categories.some((category) => category.id === value));
   const [selectedFolders, setSelectedFolders] = useUiState<string[]>("vocabulary:folders", legacyFolder === "all" ? [] : [legacyFolder], (value) => Array.isArray(value) && value.every((id) => typeof id === "string" && pair.categories.some((category) => category.id === id)));
   const [showChallenging, setShowChallenging] = useUiState("vocabulary:challenging", false, uiBoolean);
+  const [foldersExpanded, setFoldersExpanded] = useUiState("vocabulary:folders-expanded", false, uiBoolean);
   const toggleFolder = (id: string) => setSelectedFolders((ids) => ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]);
   const [folderName, setFolderName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -197,7 +198,15 @@ export function CategoryView({
           </button>
         </form>
       )}
-      <div className="category-grid">
+      <section className="library-folders" data-expanded={foldersExpanded}>
+      <button type="button" className="mobile-folder-toggle" aria-expanded={foldersExpanded}
+        aria-controls="vocabulary-folders" onClick={() => setFoldersExpanded((value) => !value)}>
+        <Folder size={19} aria-hidden="true" />
+        <span>{t("folder")}</span>
+        <span className="mobile-folder-count">{pair.categories.length.toLocaleString(settings.interfaceLanguage)}</span>
+        <ChevronDown size={18} aria-hidden="true" />
+      </button>
+      <div className="category-grid" id="vocabulary-folders">
         {pair.categories.map((category, index) => {
           const words = pair.words.filter((w) =>
             w.categoryIds.includes(category.id),
@@ -313,6 +322,7 @@ export function CategoryView({
           );
         })}
       </div>
+      </section>
       <div className="library-toolbar">
         <div className="search-field">
           <Search size={18} />
@@ -371,20 +381,23 @@ export function CategoryView({
         {filtered.length ? (
           filtered.map((w) => (
             <div className="word-row" key={w.id}>
-              <div className="word-detail">
+              <button type="button" className="word-detail" aria-label={`${t("edit")}: ${w.targetWord}`} onClick={() => setEditing(w)}>
                 <strong lang={settings.targetLanguage}>{w.targetWord}</strong>
                 <span lang={settings.sourceLanguage}>
                   {w.translations.join("; ")}
                 </span>
-              </div>
+              </button>
+              <div className="word-row-meta">
               <span className={`stat-dot word-status-indicator ${w.status === "NEW" ? "blue" : w.status === "MASTERED" ? "green" : "amber"}`}
                 role="img" aria-label={statusLabel(w)} title={statusLabel(w)} data-status={w.status.toLowerCase()} />
+              <span className="mobile-word-status" aria-hidden="true">{statusLabel(w)}</span>
               <span className="word-review-count" title={showChallenging ? undefined : t("masteryRemainingHint")}>
                 {showChallenging
                   ? `${w.repCount.toLocaleString(settings.interfaceLanguage)} / ${(w.easeFactor ?? 2.3).toLocaleString(settings.interfaceLanguage, { maximumFractionDigits: 2 })}`
                   : t(w.status === "REVIEW" ? "scheduledReviewsRemaining" : "masteryRecallsRemaining")
                     .replace("{count}", remainingMasteryRecalls(w).toLocaleString(settings.interfaceLanguage))}
               </span>
+              </div>
               <div className="row-actions">
                 <WordActionsMenu word={w.targetWord} t={t} onAction={(action) => wordAction(w, action)} />
               </div>

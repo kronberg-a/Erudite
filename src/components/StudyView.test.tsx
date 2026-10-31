@@ -260,6 +260,7 @@ describe("typing review lifecycle", () => {
       })));
       pointer("pointerdown", 0, 0);
       pointer("pointermove", 110, -150);
+      act(() => vi.advanceTimersToNextFrame());
       expect(card.querySelector(".swipe-badge.master")).not.toBeNull();
       pointer("pointerup", 110, -150);
     }
