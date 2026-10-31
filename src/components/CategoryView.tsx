@@ -28,12 +28,16 @@ export function CategoryView({
   update,
   t,
   onPractice,
+  initialWordId,
+  onWordOpened,
 }: {
   pair: PairData;
   settings: Settings;
   update: (p: PairData) => void;
   t: T;
   onPractice: (selection: StudySelection) => void;
+  initialWordId?: string;
+  onWordOpened?: () => void;
 }) {
   const [query, setQuery] = useUiState("vocabulary:query", "", uiString);
   const [selected, setSelected] = useUiState("vocabulary:folder", "all", (value) => value === "all" || pair.categories.some((category) => category.id === value));
@@ -42,6 +46,14 @@ export function CategoryView({
   const [editing, setEditing] = useState<WordCard | null>(null);
   const [adding, setAdding] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const word = pair.words.find((word) => word.id === initialWordId);
+    if (!word) return;
+    setSelected(word.categoryIds.find((id) => pair.categories.some((category) => category.id === id)) ?? "all");
+    setQuery("");
+    setEditing(word);
+    onWordOpened?.();
+  }, [initialWordId]);
   const closeDialog = () => {
     setEditing(null);
     setAdding(false);

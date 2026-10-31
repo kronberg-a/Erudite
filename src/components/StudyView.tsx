@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUp,
+  FolderOpen,
+  ListMinus,
   BookOpen,
   Eye,
   Keyboard,
@@ -10,6 +11,7 @@ import {
   Check,
   RotateCcw,
   MoreHorizontal,
+  LogOut,
   Volume2,
 } from "lucide-react";
 import type {
@@ -46,7 +48,7 @@ interface Props {
   dailyProgress?: DailyProgress;
   reviewOrder: number;
   t: T;
-  openLibrary: () => void;
+  openLibrary: (wordId?: string) => void;
   initialSelection?: StudySelection;
 }
 interface Undo {
@@ -131,7 +133,7 @@ export function StudyView({
   const fresh = buildStudyQueue(pair, "new", selection).length;
   const pool = selectedWords(pair, selection);
   const mastered = pool.filter((w) => w.status === "MASTERED").length;
-  const sessionComplete = !started && completed > 0 && queue.length === 0;
+  const sessionComplete = !started && history.length > 0 && queue.length === 0;
   const sessionVisible = started || sessionComplete;
   const wordsById = new Map(pair.words.map((word) => [word.id, word]));
   const queuedWords = queue.map((id) => wordsById.get(id));
@@ -267,6 +269,21 @@ export function StudyView({
     resetTurn();
     setReverse(true);
   };
+  const removeFromSession = () => {
+    if (!card || committedTurn.current === turn) return;
+    committedTurn.current = turn;
+    setHistory((h) => [...h, {
+      cardId: card.id, previousCardState: card, previousQueueIndex: 0,
+      queue: [...queue], reviewOrder, mode, completed, initialSessionCount,
+      dailyProgress: progress,
+    }]);
+    const remaining = queue.filter((id) => id !== card.id);
+    setQueue(remaining);
+    setInitialSessionCount((count) => Math.max(0, count - (queue.length - remaining.length)));
+    if (!remaining.length) setStarted(false);
+    setLastAction(null);
+    resetTurn();
+  };
   const reveal = () => {
     if (card && !typing && !goalReached) setRevealed(true);
   };
@@ -306,7 +323,7 @@ export function StudyView({
     setStarted(false); setCompleted(0); setInitialSessionCount(0); setQueue([]); setHistory([]);
   };
   return (
-    <div className="study-view" data-active={started} data-keyboard={keyboardOpen}>
+    <div className="study-view" data-active={started} data-keyboard={keyboardOpen} data-can-undo={history.length > 0}>
       {!started && (
         <div className="page-heading">
           <div>
@@ -357,7 +374,7 @@ export function StudyView({
         )}
         <div className="session-bar">
           <button
-            className="icon-button"
+            className="icon-button session-undo"
             aria-label={t("undo")}
             title={t("undo")}
             disabled={!history.length}
@@ -386,7 +403,7 @@ export function StudyView({
             {goal != null && <span className="session-goal" aria-label={`${t("dailyGoal")}: ${progress.wordIds.length} / ${goal}`} title={t("dailyGoal")}>
               <span className="sr-only">{t("dailyGoal")}: </span>{progress.wordIds.length}/{goal}
             </span>}
-            {started && !goalReached && <button className="end-session" onClick={endSession}>{t("end")}</button>}
+            {started && !goalReached && <button className="end-session" onClick={endSession} title={t("end")}><LogOut size={18} aria-hidden="true" /><span className="sr-only">{t("end")}</span></button>}
           </span>
         </div>
         {sessionVisible && <div className="progress-track" role="progressbar" aria-label={t("sessionResolved")} aria-valuemin={0} aria-valuemax={total} aria-valuenow={resolvedCount}>
@@ -447,31 +464,20 @@ export function StudyView({
                     aria-label={cardStatusLabel}
                     title={cardStatusLabel}
                   />
+                  <span className="card-progress-label" title={card.status === "REVIEW" && card.nextReviewDate ? `${t("scheduledReview")}: ${new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}` : undefined}>
+                    {cardStatusLabel}
+                  </span>
+                  {category && (
+                    <span className="card-category-label" title={category.name[settings.interfaceLanguage]}>
+                      {category.name[settings.interfaceLanguage]}
+                    </span>
+                  )}
                 </div>
-                  <details className="card-menu" onClick={(event) => event.stopPropagation()}>
+                  <details className="card-menu" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                     <summary aria-label={t("settings")}><MoreHorizontal size={22} /></summary>
                     <div className="card-menu-content">
-                  <div className="card-meta">
-                  <span className="card-status" title={card.status === "REVIEW" && card.nextReviewDate ? `${t("scheduledReview")}: ${new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}` : undefined}>
-                    {t(
-                      card.status === "NEW"
-                        ? "new"
-                        : card.status === "LEARNING"
-                          ? "learning"
-                          : card.status === "MASTERED" ? "mastered" : "review",
-                    )}
-                    {card.status === "LEARNING" ? ` ${card.step}/3` : ""}
-                  </span>
-                  <span className="category-tag" title={category?.name[settings.interfaceLanguage]}>
-                    {category?.name[settings.interfaceLanguage]}
-                  </span>
-                  </div>
-
-                      {(!typing || revealed) && (<button className="master-button" aria-label={t("master")} onClick={() => action("master")}>
-                  <ArrowUp size={15} /> <span>{t("master")}</span>
-                </button>)}
-                      <span>{t("review")}: {card.repCount}</span>
-                      {!!card.nextReviewDate && <span>{t("scheduledReview")}: {new Date(card.nextReviewDate).toLocaleDateString(settings.interfaceLanguage)}</span>}
+                      <button type="button" onClick={() => openLibrary(card.id)}><FolderOpen size={16} aria-hidden="true" />{t("openWordInFolder")}</button>
+                      <button type="button" onClick={removeFromSession}><ListMinus size={16} aria-hidden="true" />{t("removeFromSession")}</button>
                     </div>
                   </details>
                 </div>
@@ -575,7 +581,7 @@ export function StudyView({
             </div>
             <button
               className="primary-button"
-              onClick={available.length ? start : pool.length ? undefined : openLibrary}
+              onClick={available.length ? start : pool.length ? undefined : () => openLibrary()}
               disabled={!available.length && pool.length > 0}
             >
               {available.length

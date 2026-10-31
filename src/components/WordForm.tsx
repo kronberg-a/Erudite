@@ -224,6 +224,7 @@ export function WordForm({
           save();
         }}
       >
+        <div className="word-form-fields">
         {(existing || onClose) && (
           <div className="dialog-heading">
             <h2>{t(existing ? "edit" : "add")}</h2>
@@ -400,6 +401,8 @@ export function WordForm({
             />
           </label>
         )}
+        </div>
+        <div className="word-form-actions">
         <button
           className="primary-button"
           disabled={
@@ -429,6 +432,7 @@ export function WordForm({
             <ArrowRight size={17} />
           </button>
         )}
+        </div>
       </form>
     </div>
   );

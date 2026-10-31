@@ -1,6 +1,8 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  openWordInFolder: ["Open word in folder", "Открыть слово в папке", "Wort im Ordner öffnen", "Ouvrir le mot dans son dossier", "Apri la parola nella cartella", "Abrir palabra en su carpeta"],
+  removeFromSession: ["Remove from session", "Убрать из сессии", "Aus Sitzung entfernen", "Retirer de la session", "Rimuovi dalla sessione", "Quitar de la sesión"],
   previousPage: ["Previous page", "Предыдущая страница", "Vorherige Seite", "Page précédente", "Pagina precedente", "Página anterior"],
   nextPage: ["Next page", "Следующая страница", "Nächste Seite", "Page suivante", "Pagina successiva", "Página siguiente"],
   recallsRemaining: ["Recalls left", "Осталось ответов", "Verbleibende Abrufe", "Rappels restants", "Richiami rimasti", "Respuestas restantes"],

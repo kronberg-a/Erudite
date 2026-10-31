@@ -18,6 +18,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let container: HTMLDivElement;
 const updates = vi.fn();
+const openLibrary = vi.fn();
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
@@ -107,7 +108,7 @@ function setup(patch: Partial<WordCard> = {}, mode = "mixed", extraWords: WordCa
           setState(p);
         }}
         t={translator("en")}
-        openLibrary={() => {}}
+        openLibrary={openLibrary}
       />
     );
   }
@@ -138,16 +139,49 @@ describe("typing review lifecycle", () => {
     expect(dot.getAttribute('title')).toBe(label);
     expect(dot.closest('article')).not.toBeNull();
   });
-  it("keeps category and learning progress inside the three-dot menu", () => {
+  it("shows framed learning progress between the status dot and category", () => {
     setup({ status: "LEARNING", step: 1 });
-    expect(container.querySelector('.card-top > .card-meta')).toBeNull();
+    const marker = container.querySelector('.card-status-marker')!;
+    const progress = marker.querySelector('.card-progress-label')!;
+    expect(progress.textContent).toBe('Learning 1/3');
+    expect(progress.previousElementSibling?.classList.contains('stat-dot')).toBe(true);
+    expect(progress.nextElementSibling?.classList.contains('card-category-label')).toBe(true);
+    expect(progress.nextElementSibling?.textContent?.trim()).toBeTruthy();
     const menu = container.querySelector<HTMLDetailsElement>('.card-menu')!;
     expect(menu.open).toBe(false);
-    expect(menu.querySelector('.card-status')?.textContent).toContain('1/3');
-    expect(menu.querySelector('.category-tag')?.textContent?.trim()).not.toBe('');
     act(() => menu.querySelector('summary')!.click());
     expect(menu.open).toBe(true);
     expect(container.querySelector('.typing-correct-word')).toBeNull();
+  });
+  it("opens the current word in its folder without grading it", () => {
+    const original = setup();
+    click("Open word in folder");
+    expect(openLibrary).toHaveBeenCalledWith(original.id);
+    expect(updates).not.toHaveBeenCalled();
+    expect(container.querySelector('.card-menu .master-button')).toBeNull();
+  });
+  it("removes the last word only from this session and allows undo", () => {
+    const original = setup();
+    click("Remove from session");
+    expect(updates).not.toHaveBeenCalled();
+    expect(container.querySelector('article')).toBeNull();
+    expect(container.textContent).toContain("Session complete.");
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('0');
+    click("Undo");
+    expect(updates.mock.calls[0][0].words[0]).toEqual(original);
+    expect(container.querySelector('article')).not.toBeNull();
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuemax')).toBe('1');
+  });
+  it("continues with the remaining word after removing a card", () => {
+    const seed = seedPair("en", "fr").words[1];
+    const second = { ...seed, status: "LEARNING" as const, step: 2, translations: ["second prompt"] };
+    setup({ step: 1 }, "mixed", [second], false);
+    click("Remove from session");
+    expect(container.querySelector('.typing-translation')?.textContent).toBe('second prompt');
+    expect(updates).not.toHaveBeenCalled();
+    click("Undo");
+    expect(container.querySelector('.typing-translation')?.textContent).toBe('coffee');
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuemax')).toBe('2');
   });
   it.each(["I know", "Repeat"])("allows %s before revealing a typing answer", (grade) => {
     const original = setup({ status: "LEARNING", step: 1 }, "mixed", [], false);
@@ -215,10 +249,9 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".typing-correct-word")).toBeNull();
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "LEARNING", step: 1, repCount: 1 });
   });
-  it.each(["button", "keyboard", "swipe"])("masters with the %s control and undo restores the session", (control) => {
+  it.each(["keyboard", "swipe"])("masters with the %s control and undo restores the session", (control) => {
     const original = setup({ status: "NEW" });
-    if (control === "button") click("Already mastered");
-    else if (control === "keyboard") key(document.body, "ArrowUp");
+    if (control === "keyboard") key(document.body, "ArrowUp");
     else {
       const card = container.querySelector<HTMLElement>("article")!;
       card.setPointerCapture = vi.fn();
@@ -243,7 +276,7 @@ describe("typing review lifecycle", () => {
     expect(updates).not.toHaveBeenCalled();
     expect(container.querySelector(".master-button")).toBeNull();
     key(input("caf"), "Tab"); key(input("café"), "Enter");
-    click("Already mastered");
+    key(document.body, "ArrowUp");
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "MASTERED", repCount: 1 });
     expect(container.querySelector("article")).toBeNull();
   });

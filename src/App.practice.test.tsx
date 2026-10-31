@@ -262,6 +262,24 @@ describe("new and reset word practice", () => {
       stored.pairs["en-de"].words.find((w) => w.targetWord === "Neu")?.status,
     ).toBe("NEW");
   });
+  it("opens a study word in its folder and saves edits without grading it", async () => {
+    await renderApp();
+    clickText("Vocabulary");
+    clickLabel("Practice: Reset me");
+    clickText("Start practice");
+    const before: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
+    clickText("Open word in folder");
+    expect(container.querySelector<HTMLSelectElement>('.library-toolbar select')?.value).toBe('core');
+    const wordInput = container.querySelector<HTMLInputElement>('dialog [aria-label="Word in the learning language"]')!;
+    expect(wordInput.value).toBe('Reset me');
+    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();
+    fill(wordInput, 'Edited word');
+    act(() => container.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    const after: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
+    const original = before.pairs['en-de'].words.find((word) => word.id === 'reset')!;
+    expect(after.pairs['en-de'].words.find((word) => word.id === 'reset')).toMatchObject({ ...original, targetWord: 'Edited word' });
+    expect(after.reviewOrder).toBe(before.reviewOrder);
+  });
   it("makes reset words directly selectable, including from an excluded folder, without clearing unrelated progress", async () => {
     const stored: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     stored.pairs["en-de"].categories[0].isActiveForStudy = false;

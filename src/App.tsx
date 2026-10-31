@@ -35,6 +35,7 @@ export default function App() {
   const [storageError, setStorageError] = useState(initial.error);
   const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings"].includes(value as string));
   const [generation, setGeneration] = useState(0);
+  const [libraryWord, setLibraryWord] = useState<{ pairKey: string; wordId: string } | null>(null);
   const [practiceRequest, setPracticeRequest] = useStoredUiState<{
     pairKey: string;
     selection: StudySelection;
@@ -237,11 +238,16 @@ export default function App() {
               dailyProgress={data.dailyProgress}
               update={update}
               t={t}
-              openLibrary={() => setPage("categories")}
+              openLibrary={(wordId) => {
+                setLibraryWord(wordId ? { pairKey: key, wordId } : null);
+                setPage("categories");
+              }}
             />
           )}{" "}
           {page === "categories" && (
             <CategoryView
+              initialWordId={libraryWord?.pairKey === key ? libraryWord.wordId : undefined}
+              onWordOpened={() => setLibraryWord(null)}
               pair={pair}
               settings={s}
               update={update}
