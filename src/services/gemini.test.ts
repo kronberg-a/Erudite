@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { analyzeCefrWithGemini, analyzeSelectionWithGemini, configureGemini, getGeminiConnectionState, isGeminiConfigured, translateWithGemini } from "./gemini";
+import { analyzeCefrWithGemini, analyzeSelectionWithGemini, configureGemini, extractArticleWithGemini, getGeminiConnectionState, isGeminiConfigured, translateWithGemini } from "./gemini";
 import { analyzeArticleCefr } from "./cefr";
 import { canonicalizeWord } from "./article";
 import { translate } from "./translator";
@@ -223,5 +223,40 @@ describe("hybrid Gemini client", () => {
     expect(client.isGeminiConfigured()).toBe(true);
     expect(await client.analyzeSelectionWithGemini(input)).toEqual(result);
     expect(fetchMock.mock.calls[1][1].headers).toEqual({ "Content-Type": "application/json" });
+  });
+  it("extracts articles with Gemini when configured", async () => {
+    const articlePayload = { title: "Gemini Headline", text: "Full article body extracted by Gemini.", language: "en" };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => articlePayload });
+    vi.stubGlobal("fetch", fetchMock);
+    const extracted = await extractArticleWithGemini("https://example.com/story");
+    expect(extracted).toEqual({
+      title: "Gemini Headline",
+      text: "Full article body extracted by Gemini.",
+      url: "https://example.com/story",
+      language: "en",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [endpoint, init] = fetchMock.mock.calls[0];
+    expect(endpoint).toBe("/api/gemini");
+    expect(JSON.parse(init.body)).toEqual({ operation: "article", input: { url: "https://example.com/story" } });
+  });
+  it("validates and parses Gemini article requests and schemas", () => {
+    expect(validGeminiRequest({ operation: "article", input: { url: "https://example.com/article" } })).toBe(true);
+    expect(validGeminiRequest({ operation: "article", input: { url: "ftp://example.com" } })).toBe(false);
+    expect(validGeminiRequest({ operation: "article", input: { url: "" } })).toBe(false);
+    const body = geminiBody({ operation: "article", input: { url: "https://example.com/article" } });
+    expect(body.generationConfig.maxOutputTokens).toBe(16384);
+    expect(body.generationConfig.responseSchema.required).toEqual(["title", "text"]);
+
+    const parsed = parseGeminiResult(
+      { operation: "article", input: { url: "https://example.com/article" } },
+      { title: "<h1>Headline</h1>", text: "Body paragraph 1.\n\nBody paragraph 2." }
+    );
+    expect(parsed).toEqual({
+      title: "Headline",
+      text: "Body paragraph 1.\n\nBody paragraph 2.",
+      url: "https://example.com/article",
+      language: undefined,
+    });
   });
 });

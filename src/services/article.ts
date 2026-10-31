@@ -1,5 +1,6 @@
 import { languages } from "../types";
-import { analyzeSelectionWithGemini } from "./gemini";
+import { Readability } from "@mozilla/readability";
+import { analyzeSelectionWithGemini, extractArticleWithGemini, isGeminiConfigured } from "./gemini";
 import { guessGermanGender, normalizeGermanNoun } from "./germanNouns";
 export { analyzeSelectionWithGemini as analyzeContextualSelection } from "./gemini";
 import type { Category, Language, PairData, SavedArticle, WordCard } from "../types";
@@ -31,28 +32,103 @@ export function deleteSavedArticle(pair: PairData, id: string): PairData {
   return { ...pair, savedArticles: (pair.savedArticles ?? []).filter((a) => a.id !== id) };
 }
 export interface CollectedWord { word: string; translation: string; sentence: string; translatedSentence?: string }
-export async function importArticle(url: string, signal?: AbortSignal): Promise<Article> {
+function parseHtmlDocument(html: string): Document {
+  const Parser = typeof DOMParser !== "undefined"
+    ? DOMParser
+    : (globalThis as unknown as { DOMParser?: new () => DOMParser }).DOMParser;
+  if (Parser) {
+    return new Parser().parseFromString(html, "text/html");
+  }
+  throw new Error("DOMParser unavailable");
+}
+
+export function extractArticleFromHtml(html: string, url: string): Article {
+  const doc = parseHtmlDocument(html);
+  doc.querySelectorAll('nav, aside, footer, body > header, script, style, noscript, [role="navigation"], [role="banner"]').forEach((node) => node.remove());
+  const article = new Readability(doc).parse();
+  if (!article?.content) throw new Error("No article found");
+  const container = doc.createElement("div");
+  container.innerHTML = article.content;
+  const text = Array.from(container.querySelectorAll("p, h2, h3, li, blockquote"))
+    .filter((node) => !node.parentElement?.closest("p, h2, h3, li, blockquote"))
+    .map((node) => node.textContent?.replace(/\s+/gu, " ").trim())
+    .filter(Boolean)
+    .join("\n\n") || article.textContent?.trim();
+  if (!text) throw new Error("No article text found");
+  const hostname = (() => {
+    try { return new URL(url).hostname; } catch { return url; }
+  })();
+  return {
+    title: article.title?.trim() || hostname,
+    text,
+    url,
+    language: doc.documentElement.lang || undefined,
+  };
+}
+
+export async function importArticle(url: string, signal?: AbortSignal, apiKey?: string): Promise<Article> {
   const parsed = new URL(url);
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Invalid URL");
-  const combinedSignal = AbortSignal.any([AbortSignal.timeout(20_000), ...(signal ? [signal] : [])]);
+  if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
+
+  const stepSignal = (ms: number) => AbortSignal.any([AbortSignal.timeout(ms), ...(signal ? [signal] : [])]);
+
+  // Option 1: Old option (backend extraction via /api/article)
   const endpoints =
     typeof location !== "undefined" && location.protocol === "file:"
       ? ["http://127.0.0.1:5173/api/article", "http://127.0.0.1:3000/api/article"]
       : ["/api/article"];
-  let response: Response | undefined;
   for (const endpoint of endpoints) {
+    if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
     try {
-      response = await fetch(`${endpoint}?url=${encodeURIComponent(parsed.href)}`, { signal: combinedSignal });
-      if (response.ok) break;
+      const response = await fetch(`${endpoint}?url=${encodeURIComponent(parsed.href)}`, { signal: stepSignal(15_000) });
+      if (response.ok) {
+        const data = await response.json();
+        if (typeof data.title === "string" && typeof data.text === "string" && data.text.trim() &&
+            data.text.length <= 2_000_000 && typeof data.url === "string") {
+          return { title: data.title, text: data.text, url: data.url, language: typeof data.language === "string" ? data.language : undefined };
+        }
+      }
     } catch (err) {
-      if (combinedSignal.aborted || endpoint === endpoints[endpoints.length - 1]) throw err;
+      if (signal?.aborted) throw err;
     }
   }
-  if (!response?.ok) throw new Error("Article import failed");
-  const data = await response.json();
-  if (typeof data.title !== "string" || typeof data.text !== "string" || !data.text.trim() ||
-      data.text.length > 2_000_000 || typeof data.url !== "string") throw new Error("Invalid article");
-  return { title: data.title, text: data.text, url: data.url, language: typeof data.language === "string" ? data.language : undefined };
+
+  // Option 2: Second option (client-side CORS extraction with Readability)
+  const corsProxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(parsed.href)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(parsed.href)}`,
+  ];
+  for (const proxy of corsProxies) {
+    if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
+    try {
+      const proxyRes = await fetch(proxy, { signal: stepSignal(15_000) });
+      if (proxyRes.ok) {
+        const html = await proxyRes.text();
+        if (typeof html === "string" && html.trim() && html.length <= 5_000_000) {
+          const extracted = extractArticleFromHtml(html, parsed.href);
+          if (extracted.text.trim()) return extracted;
+        }
+      }
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+  }
+
+  // Option 3: Gemini extraction fallback
+  if (isGeminiConfigured(apiKey)) {
+    if (signal?.aborted) throw signal.reason ?? new Error("Aborted");
+    try {
+      const geminiArticle = await extractArticleWithGemini(parsed.href, signal, apiKey);
+      if (geminiArticle && geminiArticle.text.trim()) {
+        return geminiArticle;
+      }
+    } catch (err) {
+      if (signal?.aborted) throw err;
+    }
+  }
+
+  throw new Error("Article import failed");
 }
 export function wordParts(text: string): string[] {
   return text.split(/(\p{L}[\p{L}\p{M}]*(?:['’\-][\p{L}\p{M}]+)*)/gu);

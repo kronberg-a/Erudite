@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { canonicalizeWord, collectArticleWords, importArticle, parseConlluCanonical, selectContextualTranslation, sentenceAt, wordParts } from "./article";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
+import { canonicalizeWord, collectArticleWords, extractArticleFromHtml, importArticle, parseConlluCanonical, selectContextualTranslation, sentenceAt, wordParts } from "./article";
 import { seedPair } from "../i18n/seedData";
 import { articleWordStats, deleteSavedArticle, saveArticle, MAX_SAVED_ARTICLES, MAX_SAVED_ARTICLE_CHARS } from "./article";
 
@@ -266,5 +267,108 @@ describe("article text and collection", () => {
         "en",
       ),
     ).toBe("move towards");
+  });
+});
+
+describe("article extraction and fallbacks", () => {
+  it("uses the old option (backend endpoint) first when available", async () => {
+    const backendData = {
+      title: "Backend Title",
+      text: "Content extracted by the backend.",
+      url: "https://example.com/story",
+      language: "en",
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/article")) {
+        return { ok: true, json: async () => backendData };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const article = await importArticle("https://example.com/story");
+    expect(article).toEqual(backendData);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/api/article");
+  });
+
+  beforeEach(() => {
+    if (!globalThis.DOMParser) {
+      globalThis.DOMParser = new JSDOM().window.DOMParser;
+    }
+  });
+
+  it("extracts clean title and text from HTML via Readability", () => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head><title>My Article Title</title></head>
+<body>
+  <header>Site Header</header>
+  <nav><a href="/">Home</a></nav>
+  <main>
+    <article>
+      <h1>My Article Title</h1>
+      <p>First paragraph of the story.</p>
+      <p>Second paragraph with more details.</p>
+    </article>
+  </main>
+  <footer>Copyright 2026</footer>
+</body>
+</html>`;
+    const result = extractArticleFromHtml(html, "https://example.com/news/123");
+    expect(result.title).toContain("My Article Title");
+    expect(result.text).toContain("First paragraph of the story.");
+    expect(result.text).toContain("Second paragraph with more details.");
+    expect(result.text).not.toContain("Site Header");
+    expect(result.text).not.toContain("Copyright 2026");
+    expect(result.url).toBe("https://example.com/news/123");
+    expect(result.language).toBe("en");
+  });
+
+  it("falls back to public CORS proxy when local backend fails (Fix 1)", async () => {
+    const sampleHtml = `<!DOCTYPE html><html><head><title>CORS Story</title></head><body><article><p>Story content fetched via CORS proxy gateway.</p></article></body></html>`;
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/article")) {
+        return { ok: false, status: 404 };
+      }
+      if (url.startsWith("https://api.allorigins.win/raw")) {
+        return { ok: true, text: async () => sampleHtml };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const article = await importArticle("https://example.com/story");
+    expect(article.title).toBe("CORS Story");
+    expect(article.text).toBe("Story content fetched via CORS proxy gateway.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to Gemini extraction when local backend and CORS proxies fail (Fix 2)", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.startsWith("/api/article")) {
+        return { ok: false, status: 502 };
+      }
+      if (url.startsWith("https://api.allorigins.win") || url.startsWith("https://corsproxy.io")) {
+        return { ok: false, status: 503 };
+      }
+      if (url.startsWith("/api/gemini")) {
+        return {
+          ok: true,
+          json: async () => ({
+            title: "Gemini Extracted Title",
+            text: "Article text extracted directly by Gemini LLM.",
+            language: "de",
+          }),
+        };
+      }
+      return { ok: false };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const article = await importArticle("https://example.com/blocked-story", undefined, "user-gemini-key");
+    expect(article.title).toBe("Gemini Extracted Title");
+    expect(article.text).toBe("Article text extracted directly by Gemini LLM.");
+    expect(article.language).toBe("de");
   });
 });

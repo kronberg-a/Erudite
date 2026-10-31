@@ -1,8 +1,8 @@
 import type { Language } from "../types";
 import { wordParts } from "./article";
 import { GEMINI_ENDPOINT, GEMINI_STANDARD_TIMEOUT_MS, GeminiAnalysisError, extractGeminiResult, geminiBody, parseGeminiResult, validGeminiRequest } from "./geminiProtocol";
-import type { GeminiRequest, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
-export type { SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
+import type { ArticleExtractionResult, GeminiRequest, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
+export type { ArticleExtractionRequest, ArticleExtractionResult, SelectionAnalysisRequest, SelectionAnalysisResult } from "./geminiProtocol";
 
 let configuredKey = "";
 let serverEnabled = false;
@@ -59,7 +59,7 @@ async function requestGemini(request: GeminiRequest, signal?: AbortSignal, apiKe
   const cached = cache.get(cacheKey);
   if (cached && !force) return structuredClone(cached);
   // Give the proxy time to return its upstream error before the browser aborts.
-  const timeout = request.operation === "cefr" ? 45000 : GEMINI_STANDARD_TIMEOUT_MS + (file ? 0 : 5000);
+  const timeout = (request.operation === "cefr" || request.operation === "article") ? 45000 : GEMINI_STANDARD_TIMEOUT_MS + (file ? 0 : 5000);
   const combined = AbortSignal.any([AbortSignal.timeout(timeout), ...(signal ? [signal] : [])]);
   const direct = () => fetch(GEMINI_ENDPOINT, {
     method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
@@ -148,4 +148,9 @@ export async function analyzeCefrWithGemini(text: string, language: Language, si
   });
   const result = await requestGemini({ operation: "cefr", input: { text, language, tokens } }, signal, apiKey);
   return result && "tokens" in result ? result.tokens : undefined;
+}
+
+export async function extractArticleWithGemini(url: string, signal?: AbortSignal, apiKey?: string): Promise<ArticleExtractionResult | undefined> {
+  const result = await requestGemini({ operation: "article", input: { url } }, signal, apiKey);
+  return result && "title" in result && "text" in result && "url" in result ? result as ArticleExtractionResult : undefined;
 }

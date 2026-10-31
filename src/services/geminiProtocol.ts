@@ -19,10 +19,17 @@ export interface SelectionAnalysisResult {
   partOfSpeech: typeof POS[number]; canonicalWord: string; translation: string;
   alternatives: string[]; translatedSentence: string; cefrLevel?: GeminiLevel;
 }
+export interface ArticleExtractionRequest {
+  url: string;
+}
+export interface ArticleExtractionResult {
+  title: string; text: string; url: string; language?: string;
+}
 export type GeminiRequest =
   | { operation: "selection"; input: SelectionAnalysisRequest }
   | { operation: "translation"; input: { text: string; from: Language; to: Language } }
-  | { operation: "cefr"; input: { text: string; language: Language; tokens: { offset: number; word: string }[] } };
+  | { operation: "cefr"; input: { text: string; language: Language; tokens: { offset: number; word: string }[] } }
+  | { operation: "article"; input: ArticleExtractionRequest };
 
 const stringSchema = { type: "STRING" };
 const alternativesSchema = { type: "ARRAY", items: stringSchema, maxItems: 5 };
@@ -36,6 +43,10 @@ const selectionSchema = {
     ...translationSchema.properties, partOfSpeech: { type: "STRING", enum: [...POS] },
     canonicalWord: stringSchema, translatedSentence: stringSchema, cefrLevel: levelSchema,
   }, required: ["partOfSpeech", "canonicalWord", "translation", "alternatives", "translatedSentence", "cefrLevel"],
+};
+const articleSchema = {
+  type: "OBJECT", properties: { title: stringSchema, text: stringSchema, language: stringSchema },
+  required: ["title", "text"],
 };
 const cefrSchema = {
   type: "OBJECT", properties: { tokens: { type: "ARRAY", items: {
@@ -57,7 +68,8 @@ Translate the selected contextual sense and entire sentence together. Bank in a 
 export function geminiBody(request: GeminiRequest) {
   const instruction = request.operation === "selection" ? normalization
     : request.operation === "translation" ? "Translate the supplied text from from to to, naturally and accurately. Return translation and at most five alternatives."
-    : `You are the sole CEFR classifier. Classify the supplied tokens in their article context. Return each token's exact supplied id and its level, without calculating character offsets or copying word strings. Return A1 for function words, proper names and basic senses; otherwise A2/B1/B2/C1/C2. Rate the actual contextual meaning and frequency, never spelling length or capitalization alone. Rate whole compounds by difficulty. Treat separable/phrasal verbs as a unit and assign the same level to both token ids. Include basic as well as advanced words. Never invent ids.`;
+    : request.operation === "cefr" ? `You are the sole CEFR classifier. Classify the supplied tokens in their article context. Return each token's exact supplied id and its level, without calculating character offsets or copying word strings. Return A1 for function words, proper names and basic senses; otherwise A2/B1/B2/C1/C2. Rate the actual contextual meaning and frequency, never spelling length or capitalization alone. Rate whole compounds by difficulty. Treat separable/phrasal verbs as a unit and assign the same level to both token ids. Include basic as well as advanced words. Never invent ids.`
+    : "Extract the readable title and body text from the article at the provided URL. Omit navigation, advertisements, cookie notices, and site chrome. Separate paragraphs with double newlines. Detect the main language code (e.g. en, de, fr, es, it, ru).";
   const input = request.operation === "cefr"
     ? { ...request.input, tokens: request.input.tokens.map((token, id) => ({ id, word: token.word })) }
     : request.input;
@@ -66,8 +78,8 @@ export function geminiBody(request: GeminiRequest) {
     contents: [{ role: "user", parts: [{ text: JSON.stringify(input) }] }],
     generationConfig: {
       responseMimeType: "application/json",
-      responseSchema: request.operation === "selection" ? selectionSchema : request.operation === "translation" ? translationSchema : cefrSchema,
-      thinkingConfig: { thinkingLevel: "minimal" }, maxOutputTokens: request.operation === "cefr" ? 16384 : 4096,
+      responseSchema: request.operation === "selection" ? selectionSchema : request.operation === "translation" ? translationSchema : request.operation === "cefr" ? cefrSchema : articleSchema,
+      thinkingConfig: { thinkingLevel: "minimal" }, maxOutputTokens: (request.operation === "cefr" || request.operation === "article") ? 16384 : 4096,
     },
   };
 }
@@ -84,6 +96,7 @@ export function validGeminiRequest(value: unknown): value is GeminiRequest {
   if (value.operation === "cefr") return text(i.text, 12000) && language(i.language) && Array.isArray(i.tokens) && i.tokens.length <= 4000 &&
     i.tokens.every((token) => object(token) && Number.isSafeInteger(token.offset) && Number(token.offset) >= 0 && text(token.word, 2000) &&
       (i.text as string).slice(Number(token.offset), Number(token.offset) + token.word.length) === token.word);
+  if (value.operation === "article") return text(i.url, 4096) && /^https?:\/\//i.test(i.url as string);
   return false;
 }
 
@@ -97,9 +110,17 @@ export function extractGeminiResult(payload: unknown): unknown {
   return JSON.parse(content);
 }
 
-export function parseGeminiResult(request: GeminiRequest, value: unknown): SelectionAnalysisResult | { translation: string; alternatives: string[] } | { tokens: { offset: number; word: string; level: GeminiLevel }[] } {
+export function parseGeminiResult(request: GeminiRequest, value: unknown): SelectionAnalysisResult | { translation: string; alternatives: string[] } | { tokens: { offset: number; word: string; level: GeminiLevel }[] } | ArticleExtractionResult {
   if (!object(value)) throw new Error("Invalid Gemini result");
   const clean = (v: string) => v.replace(/<[^>]*>/gu, "").normalize("NFC").trim();
+  if (request.operation === "article") {
+    if (!text(value.title, 2000) || !text(value.text, 2_000_000)) throw new Error("Invalid article result");
+    const title = clean(value.title);
+    const body = clean(value.text);
+    if (!title || !body) throw new Error("Empty article result");
+    const lang = typeof value.language === "string" ? clean(value.language).toLowerCase().slice(0, 10) : undefined;
+    return { title, text: body, url: request.input.url, language: lang || undefined };
+  }
   if (request.operation === "cefr") {
     if (!Array.isArray(value.tokens) || value.tokens.length > 4000) throw new Error("Invalid CEFR result");
     const allowed = new Map(request.input.tokens.map((token) => [token.offset, token.word]));

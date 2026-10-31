@@ -229,7 +229,7 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     importing.current = controller;
     setBusy(true); setError(false);
     try {
-      const next = await importArticle(url, controller.signal);
+      const next = await importArticle(url, controller.signal, settings.geminiApiKey);
       if (!controller.signal.aborted) load(next);
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { if (!controller.signal.aborted) setBusy(false); }

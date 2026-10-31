@@ -33,7 +33,7 @@ export async function geminiHandler(req: IncomingMessage, res: ServerResponse) {
     const request: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (!validGeminiRequest(request)) { end(400, { error: "Invalid Gemini request" }); return; }
     clearTimeout(deadline);
-    deadline = setTimeout(disconnect, request.operation === "cefr" ? 50000 : GEMINI_STANDARD_TIMEOUT_MS);
+    deadline = setTimeout(disconnect, (request.operation === "cefr" || request.operation === "article") ? 50000 : GEMINI_STANDARD_TIMEOUT_MS);
     const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify(geminiBody(request)), signal: controller.signal,
