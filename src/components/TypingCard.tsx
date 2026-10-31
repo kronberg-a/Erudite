@@ -267,8 +267,10 @@ export function TypingCard({
               aria-describedby={attemptStatusId}
               autoComplete="off"
               autoCorrect="off"
-              autoCapitalize="off"
+              autoCapitalize="none"
               spellCheck={false}
+              // Native predictive-text opt-out; not yet in our React typings.
+              {...{ writingsuggestions: "false" }}
               onChange={(e) => chooseInput(e.target.value)}
             />
             {attemptsBar}

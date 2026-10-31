@@ -615,11 +615,12 @@ export async function canonicalizeWordFallback(
   }
 }
 export const wordKey = (word: string, language: Language) => word.trim().normalize("NFC").toLocaleLowerCase(language);
-export function collectArticleWords(pair: PairData, entries: CollectedWord[], folderName: string, language: Language) {
-  if (!folderName.trim() || !entries.length || entries.length > 50 || entries.some((e) => !e.word.trim() || !e.translation.trim()))
+export function collectArticleWords(pair: PairData, entries: CollectedWord[], folderName: string, language: Language, existingFolderId?: string) {
+  const existingCategory = existingFolderId ? pair.categories.find((category) => category.id === existingFolderId) : undefined;
+  if ((existingFolderId ? !existingCategory : !folderName.trim()) || !entries.length || entries.length > 50 || entries.some((e) => !e.word.trim() || !e.translation.trim()))
     throw new Error("Invalid collection");
-  const folderId = crypto.randomUUID();
-  const category: Category = {
+  const folderId = existingCategory?.id ?? crypto.randomUUID();
+  const category: Category = existingCategory ?? {
     id: folderId, isCustom: true, isActiveForStudy: true,
     name: Object.fromEntries(languages.map((l) => [l, folderName.trim().slice(0, 80)])) as Category["name"],
   };
@@ -637,5 +638,5 @@ export function collectArticleWords(pair: PairData, entries: CollectedWord[], fo
       words.push(word);
     }
   }
-  return { pair: { ...pair, words, categories: [...pair.categories, category] }, folderId };
+  return { pair: { ...pair, words, categories: existingCategory ? pair.categories : [...pair.categories, category] }, folderId };
 }

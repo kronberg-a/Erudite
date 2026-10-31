@@ -242,6 +242,30 @@ it("collects, translates, persists context in a folder, and requests folder prac
   click("Start another batch");
   expect(container.querySelectorAll(".reader-entry")).toHaveLength(0);
 });
+it("saves into a selected existing folder and falls back to a new folder if it is deleted", async () => {
+  const name = { en: "Travel", ru: "Travel", de: "Travel", fr: "Travel", it: "Travel", es: "Travel" };
+  pair = { ...pair, categories: [{ id: "travel", name, isCustom: true, isActiveForStudy: false }] };
+  renderLibrary();
+  vi.mocked(translate).mockResolvedValue({ primary: "hello", alternatives: [] });
+  paste();
+  await act(async () => click("Hallo"));
+  click("Add to list");
+  const picker = container.querySelector<HTMLSelectElement>(".reader-collector select")!;
+  expect(picker.closest("label")!.textContent).toContain("Folder");
+  act(() => { picker.value = "travel"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(container.querySelectorAll(".reader-collector input")).toHaveLength(1);
+  click("Save collected words");
+  const saved: PairData = update.mock.lastCall![0];
+  expect(saved.categories).toEqual(pair.categories);
+  expect(saved.words[0].categoryIds).toEqual(["travel"]);
+  click("Practice folder");
+  expect(practice).toHaveBeenCalledWith({ kind: "category", id: "travel" });
+  pair = { ...saved, categories: [] };
+  renderLibrary();
+  expect(container.querySelector<HTMLSelectElement>(".reader-collector select")!.value).toBe("");
+  expect(container.querySelectorAll(".reader-collector input")).toHaveLength(2);
+  expect(Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Save collected words")!.disabled).toBe(false);
+});
 it("ignores a translation that resolves after its preview is dismissed", async () => {
   let resolve!: (value: { primary: string; alternatives: string[] }) => void;
   vi.mocked(translate).mockReturnValue(new Promise((r) => { resolve = r; }));

@@ -33,7 +33,15 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     (entry.group === undefined || typeof entry.group === "boolean") && (entry.picked === undefined || (Array.isArray(entry.picked) && entry.picked.every((word) => uiObject(word) && uiString(word.word) && uiCount(word.offset))))));
   const [preview, setPreview] = useState<Entry | null>(null);
   const [folder, setFolder] = useUiState("reader:folder", "", uiString);
+  const [destinationFolder, setDestinationFolder] = useUiState("reader:destinationFolder", "", uiString);
+  const existingFolderId = pair.categories.some((category) => category.id === destinationFolder) ? destinationFolder : "";
   const [savedFolder, setSavedFolder] = useUiState<string | null>("reader:savedFolder", null, (value) => value === null || pair.categories.some((category) => category.id === value));
+  useEffect(() => {
+    if (destinationFolder && !existingFolderId) {
+      setDestinationFolder("");
+      setSavedFolder(null);
+    }
+  }, [destinationFolder, existingFolderId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [limit, setLimit] = useState(false);
@@ -310,7 +318,7 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
     setSavedFolder(null);
   };
   const save = () => {
-    const result = collectArticleWords(pair, entries, folder, settings.targetLanguage);
+    const result = collectArticleWords(pair, entries, folder, settings.targetLanguage, existingFolderId || undefined);
     update(result.pair); setSavedFolder(result.folderId);
   };
   const initialWords = (entry: Entry) => entry.picked ?? wordParts(entry.sourceWord ?? entry.word).flatMap((part, index, parts) => index % 2 === 1 ? [{ word: part, offset: entry.offset + parts.slice(0, index).join("").length }] : []);
@@ -457,8 +465,12 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
           <p lang={settings.targetLanguage}>{entry.sentence}</p>
           {entry.translatedSentence && <details className="reader-context"><summary>{t("sentenceTranslation")}</summary><p lang={settings.sourceLanguage}>{entry.translatedSentence}</p></details>}
         </div>)}
-        <label>{t("folderName")}<input maxLength={80} value={folder} onChange={(e) => { setFolder(e.target.value); setSavedFolder(null); }} /></label>
-        <button className="primary-button" disabled={!!savedFolder || !folder.trim() || !entries.length || entries.some((entry) => !entry.translation.trim() || entry.state === "pending")} onClick={save}>{t("saveCollected")}<ArrowRight size={16} /></button>
+        <label>{t("folder")}<select value={existingFolderId} onChange={(e) => { setDestinationFolder(e.target.value); setSavedFolder(null); }}>
+          <option value="">{t("newFolder")}</option>
+          {pair.categories.map((category) => <option key={category.id} value={category.id}>{category.name[settings.interfaceLanguage]}</option>)}
+        </select></label>
+        {!existingFolderId && <label>{t("folderName")}<input maxLength={80} value={folder} onChange={(e) => { setFolder(e.target.value); setSavedFolder(null); }} /></label>}
+        <button className="primary-button" disabled={!!savedFolder || (!existingFolderId && !folder.trim()) || !entries.length || entries.some((entry) => !entry.translation.trim() || entry.state === "pending")} onClick={save}>{t("saveCollected")}<ArrowRight size={16} /></button>
         {savedFolder && <><p className="success-message" role="status">{t("saved")}</p><button className="outline-button" onClick={() => onPractice({ kind: "category", id: savedFolder })}><BookOpenText size={17} />{t("practiceFolder")}</button><button className="text-button" onClick={() => { cancelPicking(); closePreview(); setEntries([]); setSavedFolder(null); setLimit(false); }}>{t("newCollection")}</button></>}
       </aside>
     </div>}

@@ -120,6 +120,20 @@ describe("article text and collection", () => {
     expect(Object.values(next.categories.at(-1)!.name)).toEqual(Array(6).fill("Article"));
     expect(() => collectArticleWords(pair, Array(51).fill({ word: "a", translation: "b", sentence: "" }), "Article", "de")).toThrow();
   });
+  it("adds to an existing folder without duplicating it or changing word progress", () => {
+    const pair = seedPair("en", "de");
+    const folderId = pair.categories[0].id;
+    const before = structuredClone(pair);
+    const { pair: next } = collectArticleWords(pair, [
+      { word: pair.words[0].targetWord, translation: "replacement", sentence: "context" },
+      { word: "Testneuwort", translation: "new word", sentence: "" },
+    ], "", "de", folderId);
+    expect(next.categories).toEqual(before.categories);
+    expect(next.words[0]).toEqual({ ...before.words[0], categoryIds: [...new Set([...before.words[0].categoryIds, folderId])] });
+    expect(next.words.at(-1)).toMatchObject({ targetWord: "Testneuwort", categoryIds: [folderId], status: "NEW" });
+    expect(pair).toEqual(before);
+    expect(() => collectArticleWords(pair, [{ word: "a", translation: "b", sentence: "" }], "Name", "de", "missing")).toThrow("Invalid collection");
+  });
   it("rejects failed and malformed imports and passes cancellation to fetch", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: false });
     vi.stubGlobal("fetch", fetch);

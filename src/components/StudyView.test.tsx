@@ -383,6 +383,12 @@ describe("typing review lifecycle", () => {
     expect(container.textContent).not.toContain("A coffee and a coffee.");
     expect(document.activeElement).toBe(container.querySelector("input"));
     const field = input("CAFÉ");
+    expect(field.getAttribute("autocomplete")).toBe("off");
+    expect(field.getAttribute("autocorrect")).toBe("off");
+    expect(field.getAttribute("autocapitalize")).toBe("none");
+    expect(field.getAttribute("spellcheck")).toBe("false");
+    expect(field.getAttribute("writingsuggestions")).toBe("false");
+    expect(field.value).toBe("CAFÉ");
     key(field, "Enter");
     expect(container.querySelector(".flashcard.grade-correct")).not.toBeNull();
     expect(container.querySelector(".typing-feedback")).toBeNull();
