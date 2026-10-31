@@ -7,8 +7,7 @@ import {
   Folder,
   ListFilter,
   Plus,
-  RotateCcw,
-  RotateCw,
+  Pencil,
   Search,
   Trash2,
   X,
@@ -23,7 +22,8 @@ import type {
 import { languages } from "../types";
 import type { T } from "../i18n/translations";
 import { getCategoryStats, getChallengingWords } from "../core/stats";
-import { deleteFolder } from "../core/folders";
+import { deleteFolder, renameFolder, transferWord } from "../core/folders";
+import { WordActionsMenu, type WordAction } from "./WordActionsMenu";
 import { remainingMasteryRecalls, resetCard } from "../core/srsEngine";
 import { WordForm } from "./WordForm";
 import { readUiState, uiBoolean, uiString, useUiKey, useUiState } from "../hooks/useUiState";
@@ -54,6 +54,31 @@ export function CategoryView({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<WordCard | null>(null);
   const [adding, setAdding] = useState(false);
+  const [renaming, setRenaming] = useState<Category | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const renameDialog = useRef<HTMLDialogElement>(null);
+  const [wordOperation, setWordOperation] = useState<{ kind: "reset" | "delete" | "move" | "copy"; wordId: string } | null>(null);
+  const [destinationId, setDestinationId] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const operationDialog = useRef<HTMLDialogElement>(null);
+  const operationWord = pair.words.find((word) => word.id === wordOperation?.wordId);
+  useEffect(() => {
+    if (renaming) renameDialog.current?.showModal();
+    else renameDialog.current?.close();
+  }, [renaming]);
+  useEffect(() => {
+    if (wordOperation) operationDialog.current?.showModal();
+    else operationDialog.current?.close();
+  }, [wordOperation]);
+  const wordAction = (word: WordCard, action: WordAction) => {
+    if (action === "edit") { setEditing(word); return; }
+    if (action === "practice") { onPractice({ kind: "word", id: word.id }); return; }
+    const source = word.categoryIds.find((id) => selectedFolders.includes(id)) ?? word.categoryIds[0] ?? "";
+    setSourceId(source);
+    setDestinationId(pair.categories.find((category) => !word.categoryIds.includes(category.id))?.id
+      ?? (action === "move" ? pair.categories.find((category) => category.id !== source)?.id : undefined) ?? "");
+    setWordOperation({ kind: action, wordId: word.id });
+  };
   const dialog = useRef<HTMLDialogElement>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
   const [deleteWords, setDeleteWords] = useState(false);
@@ -193,6 +218,7 @@ export function CategoryView({
                 <Folder size={22} />
                 <div className="category-panel-tools">
                   <span className="category-number">{(index + 1).toString().padStart(2, "0")}</span>
+                  <button type="button" className="icon-button folder-rename-button" title={t("renameFolder")} aria-label={`${t("renameFolder")}: ${category.name[settings.interfaceLanguage]}`} onClick={() => { setRenameValue(category.name[settings.interfaceLanguage]); setRenaming(category); }}><Pencil size={16} /></button>
                   <button type="button" className="icon-button folder-delete-button" title={t("deleteFolder")} aria-label={`${t("deleteFolder")}: ${category.name[settings.interfaceLanguage]}`} onClick={() => { setDeleteWords(false); setDeleting(category); }}><Trash2 size={16} /></button>
                 </div>
               </div>
@@ -345,12 +371,12 @@ export function CategoryView({
         {filtered.length ? (
           filtered.map((w) => (
             <div className="word-row" key={w.id}>
-              <button className="word-detail" onClick={() => setEditing(w)}>
+              <div className="word-detail">
                 <strong lang={settings.targetLanguage}>{w.targetWord}</strong>
                 <span lang={settings.sourceLanguage}>
                   {w.translations.join("; ")}
                 </span>
-              </button>
+              </div>
               <span className={`stat-dot word-status-indicator ${w.status === "NEW" ? "blue" : w.status === "MASTERED" ? "green" : "amber"}`}
                 role="img" aria-label={statusLabel(w)} title={statusLabel(w)} data-status={w.status.toLowerCase()} />
               <span className="word-review-count" title={showChallenging ? undefined : t("masteryRemainingHint")}>
@@ -360,31 +386,7 @@ export function CategoryView({
                     .replace("{count}", remainingMasteryRecalls(w).toLocaleString(settings.interfaceLanguage))}
               </span>
               <div className="row-actions">
-                <button
-                  className="icon-button"
-                  title={t("resetReview")}
-                  aria-label={`${t("resetReview")}: ${w.targetWord}`}
-                  onClick={() => modify(resetCard(w, "REVIEW"))}
-                >
-                  <RotateCw size={16} />
-                </button>
-                <button
-                  className="icon-button"
-                  title={t("practice")}
-                  aria-label={`${t("practice")}: ${w.targetWord}`}
-                  onClick={() => onPractice({ kind: "word", id: w.id })}
-                >
-                  <BookOpen size={16} />
-                </button>
-                <button
-                  className="icon-button"
-                  title={t("reset")}
-                  aria-label={`${t("reset")}: ${w.targetWord}`}
-                  onClick={() => modify(resetCard(w))}
-                >
-                  <RotateCcw size={16} />
-                </button>
-
+                <WordActionsMenu word={w.targetWord} t={t} onAction={(action) => wordAction(w, action)} />
               </div>
             </div>
           ))
@@ -395,6 +397,52 @@ export function CategoryView({
           </div>
         )}
       </div>
+      <dialog ref={renameDialog} className="edit-dialog vocabulary-action-dialog" aria-labelledby="rename-folder-title"
+        onCancel={() => setRenaming(null)} onClick={(event) => { if (event.target === event.currentTarget) setRenaming(null); }}>
+        {renaming && <form className="panel vocabulary-action-content" onSubmit={(event) => {
+          event.preventDefault();
+          if (!renameValue.trim()) return;
+          update(renameFolder(pair, renaming.id, renameValue));
+          setRenaming(null);
+        }}>
+          <h2 id="rename-folder-title">{t("renameFolder")}</h2>
+          <label>{t("folderName")}<input autoFocus required maxLength={80} value={renameValue} onChange={(event) => setRenameValue(event.target.value)} /></label>
+          <div className="vocabulary-action-buttons"><button type="button" className="outline-button" onClick={() => setRenaming(null)}>{t("cancel")}</button><button type="submit" className="primary-button" disabled={!renameValue.trim()}>{t("saveChanges")}</button></div>
+        </form>}
+      </dialog>
+      <dialog ref={operationDialog} className="edit-dialog vocabulary-action-dialog" aria-labelledby="word-operation-title"
+        onCancel={() => setWordOperation(null)} onClick={(event) => { if (event.target === event.currentTarget) setWordOperation(null); }}>
+        {wordOperation && operationWord && <div className="panel vocabulary-action-content">
+          <h2 id="word-operation-title">{t(wordOperation.kind === "reset" ? "reset" : wordOperation.kind === "delete" ? "deleteWord" : wordOperation.kind === "move" ? "moveWord" : "copyWord")}</h2>
+          <p className="word-operation-name" lang={settings.targetLanguage}>{operationWord.targetWord}</p>
+          {wordOperation.kind === "reset" ? <>
+            <p className="stats-hint">{t("resetWordHint")}</p>
+            <div className="word-reset-options">{(["NEW", "REVIEW"] as const).map((status) => <button key={status} type="button" className="outline-button" onClick={() => {
+              modify(resetCard(operationWord, status)); setWordOperation(null);
+            }}>{t(status === "NEW" ? "resetNew" : "resetReview")}</button>)}</div>
+            <div className="vocabulary-action-buttons"><button type="button" className="outline-button" autoFocus onClick={() => setWordOperation(null)}>{t("cancel")}</button></div>
+          </> : wordOperation.kind === "delete" ? <>
+            <p className="stats-hint">{t("deleteWordHint")}</p>
+            <div className="vocabulary-action-buttons"><button type="button" className="outline-button" autoFocus onClick={() => setWordOperation(null)}>{t("cancel")}</button><button type="button" className="outline-button folder-delete-confirm" onClick={() => {
+              update({ ...pair, words: pair.words.filter((word) => word.id !== operationWord.id) }); setWordOperation(null);
+            }}>{t("deleteWord")}</button></div>
+          </> : <form onSubmit={(event) => {
+            event.preventDefault();
+            if (!destinationId || (wordOperation.kind === "move" && destinationId === sourceId)) return;
+            update(transferWord(pair, operationWord.id, destinationId, wordOperation.kind === "move" ? sourceId || undefined : undefined));
+            setWordOperation(null);
+          }}>
+            <p className="stats-hint">{t(wordOperation.kind === "move" ? "moveWordHint" : "copyWordHint")}</p>
+            {wordOperation.kind === "move" && operationWord.categoryIds.length > 0 && <label>{t("fromFolder")}<select value={sourceId} onChange={(event) => { setSourceId(event.target.value); if (event.target.value === destinationId) setDestinationId(""); }}>{pair.categories.filter((category) => operationWord.categoryIds.includes(category.id)).map((category) => <option key={category.id} value={category.id}>{category.name[settings.interfaceLanguage]}</option>)}</select></label>}
+            <label>{t("toFolder")}<select autoFocus required value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
+              <option value="" disabled>{t("chooseFolder")}</option>
+              {pair.categories.filter((category) => wordOperation.kind === "copy" ? !operationWord.categoryIds.includes(category.id) : category.id !== sourceId).map((category) => <option key={category.id} value={category.id}>{category.name[settings.interfaceLanguage]}</option>)}
+            </select></label>
+            {!(pair.categories.some((category) => wordOperation.kind === "copy" ? !operationWord.categoryIds.includes(category.id) : category.id !== sourceId)) && <p className="stats-hint">{t("noDestinationFolder")}</p>}
+            <div className="vocabulary-action-buttons"><button type="button" className="outline-button" onClick={() => setWordOperation(null)}>{t("cancel")}</button><button type="submit" className="primary-button" disabled={!destinationId || (wordOperation.kind === "move" && destinationId === sourceId)}>{t(wordOperation.kind === "move" ? "moveWord" : "copyWord")}</button></div>
+          </form>}
+        </div>}
+      </dialog>
       <dialog ref={deleteDialog} className="edit-dialog delete-folder-dialog" aria-labelledby="delete-folder-title" aria-describedby="delete-folder-name delete-folder-hint" onCancel={() => setDeleting(null)} onClick={(event) => { if (event.target === event.currentTarget) setDeleting(null); }}>
         {deleting && <div className="panel delete-folder-content">
           <div className="dialog-heading"><h2 id="delete-folder-title">{t("deleteFolder")}</h2></div>

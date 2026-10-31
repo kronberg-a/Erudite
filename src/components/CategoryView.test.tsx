@@ -114,6 +114,105 @@ function rows() {
     (word) => word.textContent,
   );
 }
+function mutableLibrary() {
+  const updates = vi.fn();
+  function Harness() {
+    const [current, setCurrent] = useState(pair);
+    return <UiStateScope.Provider value="pair:en-de"><CategoryView pair={current} settings={defaultSettings} update={(next) => { updates(next); setCurrent(next); }} t={translator("en")} onPractice={practice} /></UiStateScope.Provider>;
+  }
+  act(() => root.render(<Harness />));
+  return updates;
+}
+function clickButton(text: string, scope: ParentNode = host) {
+  const button = Array.from(scope.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent === text)!;
+  expect(button, text).toBeTruthy();
+  act(() => button.click());
+}
+function openActions(word = "difficult core") {
+  act(() => host.querySelector<HTMLButtonElement>(`[aria-label="Word actions: ${word}"]`)!.click());
+}
+function chooseAction(text: string) {
+  clickButton(text, document.querySelector('[role="menu"]')!);
+}
+function changeValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event(input instanceof HTMLInputElement ? "input" : "change", { bubbles: true }));
+  });
+}
+it("renames a folder without changing its words or selected filter", () => {
+  const updates = mutableLibrary();
+  act(() => folder("Core").click());
+  act(() => host.querySelector<HTMLButtonElement>('[aria-label="Rename folder: Core"]')!.click());
+  changeValue(host.querySelector<HTMLInputElement>('.vocabulary-action-dialog input')!, "Everyday words");
+  act(() => host.querySelector<HTMLFormElement>('.vocabulary-action-dialog form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(folder("Everyday words").checked).toBe(true);
+  expect(updates.mock.lastCall![0].words).toEqual(pair.words);
+  expect(rows()).toHaveLength(4);
+  expect(host.querySelector('[aria-label="Rename folder: Everyday words"]')).toBeTruthy();
+});
+it("offers all six actions in a keyboard-accessible menu and dismisses it without changing data", () => {
+  const updates = mutableLibrary();
+  expect(host.querySelector('.word-row .row-actions')?.querySelectorAll('button')).toHaveLength(1);
+  openActions();
+  const menu = document.querySelector('[role="menu"]')!;
+  const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+  expect(items.map((item) => item.textContent)).toEqual(["Reset progress", "Add to practice", "Edit word", "Move to folder", "Copy to folder", "Delete word"]);
+  expect(document.activeElement).toBe(items[0]);
+  act(() => items[0].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+  expect(document.activeElement).toBe(items[5]);
+  act(() => items[5].dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Word actions: difficult core");
+  openActions();
+  act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+  expect(document.querySelector('[role="menu"]')).toBeNull();
+  expect(updates).not.toHaveBeenCalled();
+});
+it("copies and moves folder membership while preserving the entire card history", () => {
+  const updates = mutableLibrary();
+  openActions(); chooseAction("Copy to folder");
+  const copyDialog = host.querySelector<HTMLDialogElement>('[aria-labelledby="word-operation-title"]')!;
+  expect(copyDialog.querySelector<HTMLSelectElement>('select')?.value).toBe(pair.categories[1].id);
+  act(() => copyDialog.querySelector('form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(updates.mock.lastCall![0].words[0]).toEqual({ ...pair.words[0], categoryIds: pair.categories.map((category) => category.id) });
+  openActions(); chooseAction("Move to folder");
+  const selectors = copyDialog.querySelectorAll<HTMLSelectElement>('select');
+  expect(selectors[0].value).toBe(pair.categories[0].id);
+  expect(selectors[1].value).toBe(pair.categories[1].id);
+  act(() => copyDialog.querySelector('form')!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(updates.mock.lastCall![0].words[0]).toEqual({ ...pair.words[0], categoryIds: [pair.categories[1].id] });
+  expect(updates.mock.lastCall![0].words).toHaveLength(pair.words.length);
+});
+it("requires confirmation before word deletion and offers both progress reset choices", () => {
+  const updates = mutableLibrary();
+  const operation = () => host.querySelector('[aria-labelledby="word-operation-title"]')!;
+  openActions(); chooseAction("Delete word");
+  expect(updates).not.toHaveBeenCalled();
+  clickButton("Cancel", operation());
+  expect(updates).not.toHaveBeenCalled();
+  openActions(); chooseAction("Reset progress");
+  clickButton("Reset to review", operation());
+  const reset = updates.mock.lastCall![0].words[0];
+  expect(reset).toMatchObject({ status: "REVIEW", repCount: 0, interval: 1, reviewRepetitions: 0 });
+  expect(reset.nextReviewDate).toBeGreaterThan(Date.now());
+  openActions(); chooseAction("Reset progress"); clickButton("Reset to new", operation());
+  expect(updates.mock.lastCall![0].words[0]).toMatchObject({ status: "NEW", repCount: 0, interval: 0 });
+  openActions(); chooseAction("Delete word"); clickButton("Delete word", operation());
+  expect(updates.mock.lastCall![0].words.map((word: { id: string }) => word.id)).not.toContain("core");
+  expect(rows()).toHaveLength(pair.words.length - 1);
+});
+it("opens editing and practice from the word menu and handles a missing destination", () => {
+  mutableLibrary();
+  openActions(); chooseAction("Edit word");
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Edit word"] input')?.value).toBe("difficult core");
+  act(() => host.querySelector<HTMLDialogElement>('[aria-label="Edit word"]')!.dispatchEvent(new Event("cancel", { bubbles: true })));
+  openActions(); chooseAction("Add to practice");
+  expect(practice).toHaveBeenCalledExactlyOnceWith({ kind: "word", id: "core" });
+  openActions("shared difficult"); chooseAction("Copy to folder");
+  expect(host.querySelector('[aria-labelledby="word-operation-title"]')?.textContent).toContain("Create another folder first");
+  expect(host.querySelector<HTMLButtonElement>('[aria-labelledby="word-operation-title"] button[type="submit"]')?.disabled).toBe(true);
+});
 function challenging() {
   act(() =>
     host.querySelector<HTMLInputElement>(".challenging-filter input")!.click(),

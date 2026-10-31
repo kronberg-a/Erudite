@@ -76,6 +76,16 @@ function clickLabel(label: string) {
   if (!target) throw new Error(`Missing ${label}`);
   act(() => target.click());
 }
+function chooseWordAction(action: string, resetTo?: "new" | "review") {
+  clickLabel("Word actions: Reset me");
+  const item = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find((button) => button.textContent === action);
+  if (!item) throw new Error(`Missing word action ${action}`);
+  act(() => item.click());
+  if (resetTo) {
+    const reset = Array.from(container.querySelectorAll<HTMLButtonElement>('.vocabulary-action-dialog button')).find((button) => button.textContent === `Reset to ${resetTo}`)!;
+    act(() => reset.click());
+  }
+}
 function fill(input: HTMLInputElement, value: string) {
   act(() => {
     Object.getOwnPropertyDescriptor(
@@ -104,7 +114,7 @@ describe("new and reset word practice", () => {
     const learning = rows().find((row) => row.textContent?.includes("Learning word"))!;
     expect(learning.querySelector('.word-status-indicator.amber')!.getAttribute("title")).toBe("Learning 2/3");
     expect(learning.querySelector('.word-review-count')!.textContent).toBe("7 recalls left");
-    clickLabel("Reset progress: Reset me");
+    chooseWordAction("Reset progress", "new");
     const reset = rows().find((row) => row.textContent?.includes("Reset me"))!;
     expect(reset.querySelector('.word-status-indicator.blue')!.getAttribute("aria-label")).toBe("New words");
     expect(reset.querySelector('.word-review-count')!.textContent).toBe("9 recalls left");
@@ -138,7 +148,7 @@ describe("new and reset word practice", () => {
     await renderApp();
     clickText("Vocabulary");
     expect(container.querySelector<HTMLButtonElement>('[aria-label="Practice: Core vocabulary"]')?.disabled).toBe(true);
-    clickLabel("Practice: Reset me");
+    chooseWordAction("Add to practice");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     clickText("I know");
@@ -165,7 +175,7 @@ describe("new and reset word practice", () => {
   it("resets mastered words and whole folders directly into the immediately available review pool", async () => {
     await renderApp();
     clickText("Vocabulary");
-    clickLabel("Reset to review: Reset me");
+    chooseWordAction("Reset progress", "review");
     clickText("Reset to review");
     const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     expect(
@@ -188,8 +198,8 @@ describe("new and reset word practice", () => {
     localStorage.setItem("erudite:v3", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
-    clickLabel("Reset progress: Reset me");
-    clickLabel("Practice: Reset me");
+    chooseWordAction("Reset progress", "new");
+    chooseWordAction("Add to practice");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
@@ -265,7 +275,7 @@ describe("new and reset word practice", () => {
   it("opens a study word in its folder and saves edits without grading it", async () => {
     await renderApp();
     clickText("Vocabulary");
-    clickLabel("Practice: Reset me");
+    chooseWordAction("Add to practice");
     clickText("Start practice");
     const before: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     clickText("Open word in folder");
@@ -286,8 +296,8 @@ describe("new and reset word practice", () => {
     localStorage.setItem("erudite:v3", JSON.stringify(stored));
     await renderApp();
     clickText("Vocabulary");
-    clickLabel("Reset progress: Reset me");
-    clickLabel("Practice: Reset me");
+    chooseWordAction("Reset progress", "new");
+    chooseWordAction("Add to practice");
     clickText("Start practice");
     expect(container.querySelector("article h2")?.textContent).toBe("possibility");
     const current: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);

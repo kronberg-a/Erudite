@@ -1432,7 +1432,7 @@ kbd {
   display: block;
   overflow-wrap: anywhere;
 }
-.word-detail:hover strong {
+button.word-detail:hover strong {
   color: var(--accent);
 }
 .status-pill {
@@ -2923,4 +2923,37 @@ body:has(.study-view) { overflow: hidden; overscroll-behavior: none; }
 .delete-folder-option { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; line-height: 1.5; cursor: pointer; }
 .delete-folder-option input { margin: 1px 0 0; }
 .delete-folder-option:has(input:checked) { border-color: color-mix(in srgb, var(--negative) 35%, var(--border)); background: var(--red-bg); }
+
+.folder-rename-button { width: 30px; height: 30px; }
+.vocabulary-table .word-table-header, .vocabulary-table .word-row { grid-template-columns: minmax(0, 1fr) 130px 150px 44px; }
+.vocabulary-table .row-actions .word-menu-trigger { width: 44px; height: 44px; }
+.word-actions-menu {
+  position: fixed;
+  z-index: 60;
+  width: min(260px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--text) 8%, transparent);
+}
+.word-actions-menu button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 4px; text-align: left; font-size: 12px; transition: background 150ms ease-out; }
+.word-actions-menu button:hover, .word-actions-menu button:focus-visible { background: var(--soft); }
+.word-actions-menu button svg { flex-shrink: 0; }
+.word-actions-menu .word-action-delete { color: var(--negative); border-top: 1px solid var(--border); margin-top: 4px; }
+.vocabulary-action-dialog { max-width: 440px; }
+.vocabulary-action-content { padding: 24px; }
+.vocabulary-action-content h2 { font-size: 22px; margin: 0 0 20px; }
+.vocabulary-action-content label { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; font-size: 12px; }
+.vocabulary-action-content input, .vocabulary-action-content select { width: 100%; }
+.word-operation-name { font-size: 16px; overflow-wrap: anywhere; }
+.vocabulary-action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.word-reset-options { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+@media (max-width: 767px) {
+  .vocabulary-table .word-table-header, .vocabulary-table .word-row { grid-template-columns: minmax(0, 1fr) 70px 70px 44px; }
+}
 .delete-folder-word-count { color: var(--muted); font-variant-numeric: tabular-nums; }

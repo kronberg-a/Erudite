@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { deleteFolder } from "./folders";
+import { deleteFolder, renameFolder, transferWord } from "./folders";
 import { seedPair } from "../i18n/seedData";
 import {
   defaultSettings,
@@ -7,6 +7,37 @@ import {
   validateData,
 } from "../services/storage";
 import type { AppData, PairData } from "../types";
+
+it("renames any folder in every interface language while keeping its identity and words", () => {
+  const pair = seedPair("en", "de");
+  const before = structuredClone(pair);
+  const result = renameFolder(pair, pair.categories[0].id, "  My words  ");
+  expect(new Set(Object.values(result.categories[0].name))).toEqual(new Set(["My words"]));
+  expect(result.categories[0].id).toBe(pair.categories[0].id);
+  expect(result.words).toBe(pair.words);
+  expect(pair).toEqual(before);
+  for (const value of ["", "  ", "x".repeat(81)]) expect(renameFolder(pair, pair.categories[0].id, value)).toBe(pair);
+  expect(renameFolder(pair, "missing", "Name")).toBe(pair);
+});
+
+it("copies membership and moves only the chosen source without losing progress or duplicating cards", () => {
+  const seed = seedPair("en", "de");
+  const [a, b, c] = seed.categories;
+  const word = { ...seed.words[0], categoryIds: [a.id, b.id], status: "REVIEW" as const, interval: 35, repCount: 17, nextReviewDate: 123456, reviewRepetitions: 4 };
+  const pair = { ...seed, words: [word] };
+  const copied = transferWord(pair, word.id, c.id);
+  expect(copied.words).toEqual([{ ...word, categoryIds: [a.id, b.id, c.id] }]);
+  const moved = transferWord(copied, word.id, c.id, a.id);
+  expect(moved.words).toEqual([{ ...word, categoryIds: [b.id, c.id] }]);
+  expect(transferWord(copied, word.id, c.id).words).toEqual(copied.words);
+  expect(pair.words[0]).toBe(word);
+  expect(transferWord(pair, word.id, a.id, a.id)).toBe(pair);
+  expect(transferWord(pair, word.id, "missing")).toBe(pair);
+  expect(transferWord(pair, "missing", c.id)).toBe(pair);
+  expect(transferWord(pair, word.id, c.id, "missing")).toBe(pair);
+  const unfiled = { ...pair, words: [{ ...word, categoryIds: [] }] };
+  expect(transferWord(unfiled, word.id, c.id).words[0].categoryIds).toEqual([c.id]);
+});
 
 it("deletes only the requested folder and memberships while preserving vocabulary and progress", () => {
   const seed = seedPair("en", "de");
