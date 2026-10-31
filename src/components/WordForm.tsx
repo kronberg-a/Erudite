@@ -10,6 +10,8 @@ import type {
 import { languageNames, languages } from "../types";
 import type { T } from "../i18n/translations";
 import { translate } from "../services/translator";
+type ExampleDraft = WordCard["examples"][number] & { id: string };
+const emptyExample = (): ExampleDraft => ({ id: crypto.randomUUID(), targetSentence: "", translatedSentence: "" });
 export function WordForm({
   pair,
   settings,
@@ -37,29 +39,25 @@ export function WordForm({
   const [transcription, setTranscription] = useState(
     existing?.transcription ?? "",
   );
-  const [sentence, setSentence] = useState(
-    existing?.examples[0]?.targetSentence ?? "",
-  );
-  const [sentenceTranslation, setSentenceTranslation] = useState(
-    existing?.examples[0]?.translatedSentence ?? "",
-  );
+  const [examples, setExamples] = useState<ExampleDraft[]>(() => existing?.examples.length
+    ? existing.examples.map((example) => ({ ...example, id: crypto.randomUUID() }))
+    : [emptyExample()]);
   const [categoryId, setCategoryId] = useState(
     existing?.categoryIds[0] ?? initialCategoryId ?? pair.categories[0]?.id ?? "",
   );
   const [newFolder, setNewFolder] = useState("");
   const [alternatives, setAlternatives] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [sentenceBusy, setSentenceBusy] = useState(false);
+  const [busyExamples, setBusyExamples] = useState<string[]>([]);
   const [message, setMessage] = useState<"translateError" | "offline" | null>(
     null,
   );
   const [saved, setSaved] = useState(false);
   const [savedWordId, setSavedWordId] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
-  const sentenceController = useRef<AbortController | null>(null);
+  const sentenceControllers = useRef(new Map<string, AbortController>());
   const manual = useRef(!!existing);
   const revision = useRef(0);
-  const sentenceRevision = useRef(0);
   const request = async (text: string, force = false) => {
     if (!text.trim() || (manual.current && !force)) return;
     controller.current?.abort();
@@ -99,39 +97,50 @@ export function WordForm({
   useEffect(
     () => () => {
       controller.current?.abort();
-      sentenceController.current?.abort();
+      sentenceControllers.current.forEach((controller) => controller.abort());
     },
     [],
   );
-  const translateSentence = async () => {
-    sentenceController.current?.abort();
+  const cancelSentence = (exampleId: string) => {
+    sentenceControllers.current.get(exampleId)?.abort();
+    sentenceControllers.current.delete(exampleId);
+    setBusyExamples((ids) => ids.filter((id) => id !== exampleId));
+  };
+  const editExample = (exampleId: string, patch: Partial<WordCard["examples"][number]>) => {
+    cancelSentence(exampleId);
+    setExamples((rows) => rows.map((row) => row.id === exampleId ? { ...row, ...patch } : row));
+  };
+  const translateSentence = async (example: ExampleDraft) => {
+    cancelSentence(example.id);
     const abort = new AbortController();
-    sentenceController.current = abort;
-    const version = sentenceRevision.current;
-    setSentenceBusy(true);
+    sentenceControllers.current.set(example.id, abort);
+    setBusyExamples((ids) => [...ids, example.id]);
     setMessage(null);
     try {
       const result = await translate(
-        sentence,
+        example.targetSentence,
         settings.targetLanguage,
         settings.sourceLanguage,
         abort.signal,
       );
-      if (!abort.signal.aborted && version === sentenceRevision.current)
-        setSentenceTranslation(result.primary);
+      if (!abort.signal.aborted)
+        setExamples((rows) => rows.map((row) => row.id === example.id ? { ...row, translatedSentence: result.primary } : row));
     } catch {
       if (!abort.signal.aborted) setMessage("translateError");
     } finally {
-      if (!abort.signal.aborted) setSentenceBusy(false);
+      if (sentenceControllers.current.get(example.id) === abort) {
+        sentenceControllers.current.delete(example.id);
+        setBusyExamples((ids) => ids.filter((id) => id !== example.id));
+      }
     }
   };
   const save = () => {
     controller.current?.abort();
-    sentenceController.current?.abort();
+    sentenceControllers.current.forEach((controller) => controller.abort());
+    sentenceControllers.current.clear();
     revision.current++;
-    sentenceRevision.current++;
     setBusy(false);
-    setSentenceBusy(false);
+    setBusyExamples([]);
     let categories = pair.categories;
     let selectedId = categoryId;
     if (categoryId === "__new" && newFolder.trim()) {
@@ -165,15 +174,10 @@ export function WordForm({
         .split(";")
         .map((s) => s.trim())
         .filter(Boolean),
-      examples: sentence.trim()
-        ? [
-            {
-              targetSentence: sentence.trim(),
-              translatedSentence: sentenceTranslation.trim(),
-            },
-            ...(existing?.examples.slice(1) ?? []),
-          ]
-        : [],
+      examples: examples.filter((example) => example.targetSentence.trim()).map((example) => ({
+        targetSentence: example.targetSentence.trim(),
+        translatedSentence: example.translatedSentence.trim(),
+      })),
       categoryIds: [
         ...new Set([selectedId, ...(existing?.categoryIds.slice(1) ?? [])]),
       ],
@@ -190,8 +194,7 @@ export function WordForm({
       setWord("");
       setTranslation("");
       setTranscription("");
-      setSentence("");
-      setSentenceTranslation("");
+      setExamples([emptyExample()]);
       setAlternatives([]);
       setMessage(null);
       setSaved(true);
@@ -334,49 +337,59 @@ export function WordForm({
           />
         </label>
         <div className="form-divider" />
-        <label>
+        {examples.map((example, index) => (
+        <fieldset className="word-example" key={example.id}>
+          <legend>{t("exampleNumber").replace("{count}", String(index + 1))}</legend>
+          {examples.length > 1 && <button type="button" className="icon-button example-remove" aria-label={`${t("removeExample")} ${index + 1}`} onClick={() => {
+            cancelSentence(example.id);
+            setExamples((rows) => rows.filter((row) => row.id !== example.id));
+          }}><X size={16} aria-hidden="true" /></button>}
+        <label htmlFor={`${id}-${example.id}-sentence`}>
           {t("context")}
           <textarea
+            id={`${id}-${example.id}-sentence`}
+            required={!!example.translatedSentence.trim()}
             maxLength={1000}
             rows={2}
-            value={sentence}
+            value={example.targetSentence}
             lang={settings.targetLanguage}
-            onChange={(e) => {
-              sentenceRevision.current++;
-              setSentence(e.target.value);
-            }}
+            onChange={(e) => editExample(example.id, { targetSentence: e.target.value })}
           />
         </label>
-        <label htmlFor={`${id}-sentence-translation`}>
+        <label htmlFor={`${id}-${example.id}-translation`}>
           <span className="label-action">
             {t("contextTranslation")}
             <button
               className="inline-button"
-              aria-label={`${t("translate")}: ${t("context")}`}
+              aria-label={`${t("translate")}: ${t("exampleNumber").replace("{count}", String(index + 1))}`}
               type="button"
-              disabled={!sentence.trim() || sentenceBusy}
+              disabled={!example.targetSentence.trim() || busyExamples.includes(example.id)}
               onClick={() => {
-                void translateSentence();
+                void translateSentence(example);
               }}
             >
-              {sentenceBusy ? t("translating") : t("translate")}
+              {busyExamples.includes(example.id) ? t("translating") : t("translate")}
             </button>
           </span>
           <textarea
-            id={`${id}-sentence-translation`}
-            aria-label={t("contextTranslation")}
+            id={`${id}-${example.id}-translation`}
             maxLength={2000}
             rows={2}
-            value={sentenceTranslation}
+            value={example.translatedSentence}
             lang={settings.sourceLanguage}
-            onChange={(e) => {
-              sentenceRevision.current++;
-              setSentenceTranslation(e.target.value);
-            }}
+            onChange={(e) => editExample(example.id, { translatedSentence: e.target.value })}
           />
         </label>
+        </fieldset>
+        ))}
+        <button type="button" className="outline-button add-example" disabled={examples.length >= 3} onClick={() => setExamples((rows) => rows.length < 3 ? [...rows, emptyExample()] : rows)}>
+          <Plus size={16} aria-hidden="true" />{t("addExample")}
+        </button>
+        </div>
+        <div className="word-form-actions">
+        <div className="word-form-save-row">
         <label>
-          {t("folder")}
+          <span className="sr-only">{t("folder")}</span>
           <select
             required
             value={categoryId}
@@ -390,19 +403,6 @@ export function WordForm({
             <option value="__new">+ {t("newFolder")}</option>
           </select>
         </label>
-        {categoryId === "__new" && (
-          <label>
-            {t("folderName")}
-            <input
-              required
-              maxLength={80}
-              value={newFolder}
-              onChange={(e) => setNewFolder(e.target.value)}
-            />
-          </label>
-        )}
-        </div>
-        <div className="word-form-actions">
         <button
           className="primary-button"
           disabled={
@@ -416,6 +416,18 @@ export function WordForm({
           {existing ? t("saveChanges") : t("save")}
           <ArrowRight size={17} />
         </button>
+        </div>
+        {categoryId === "__new" && (
+          <label className="word-form-folder-name">
+            {t("folderName")}
+            <input
+              required
+              maxLength={80}
+              value={newFolder}
+              onChange={(e) => setNewFolder(e.target.value)}
+            />
+          </label>
+        )}
         {saved && (
           <p className="success-message" role="status">
             <Check size={16} />

@@ -1508,6 +1508,15 @@ kbd {
   padding: 16px 30px;
   border-top: 1px solid var(--border);
 }
+.word-form-save-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 12px; width: 100%; }
+.word-form-save-row > label, .word-form-save-row select { min-width: 0; }
+.word-form-save-row .primary-button { align-self: end; min-width: 0; width: 100%; white-space: normal; }
+.word-form-save-row .primary-button svg { flex-shrink: 0; }
+.word-form-folder-name { width: 100%; }
+.word-example { position: relative; display: flex; flex-direction: column; gap: 18px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 6px; flex-shrink: 0; }
+.word-example legend { padding: 0 6px; color: var(--muted); font-size: 12px; }
+.example-remove { position: absolute; top: -26px; right: 8px; background: var(--surface); }
+.add-example { align-self: flex-start; }
 .word-form .primary-button {
   margin-top: 0;
   align-self: center;

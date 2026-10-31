@@ -1,6 +1,9 @@
 import type { Language } from "../types";
 // Each row is deliberately complete across all supported interface languages.
 const rows = {
+  addExample: ["Add example", "Добавить пример", "Beispiel hinzufügen", "Ajouter un exemple", "Aggiungi esempio", "Añadir ejemplo"],
+  exampleNumber: ["Example {count}", "Пример {count}", "Beispiel {count}", "Exemple {count}", "Esempio {count}", "Ejemplo {count}"],
+  removeExample: ["Remove example", "Удалить пример", "Beispiel entfernen", "Supprimer l’exemple", "Rimuovi esempio", "Eliminar ejemplo"],
   openWordInFolder: ["Open word in folder", "Открыть слово в папке", "Wort im Ordner öffnen", "Ouvrir le mot dans son dossier", "Apri la parola nella cartella", "Abrir palabra en su carpeta"],
   removeFromSession: ["Remove from session", "Убрать из сессии", "Aus Sitzung entfernen", "Retirer de la session", "Rimuovi dalla sessione", "Quitar de la sesión"],
   previousPage: ["Previous page", "Предыдущая страница", "Vorherige Seite", "Page précédente", "Pagina precedente", "Página anterior"],
