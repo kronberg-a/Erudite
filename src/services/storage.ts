@@ -1,5 +1,6 @@
 import type {
   AppData,
+  StudyActivity,
   Category,
   Language,
   PairData,
@@ -11,6 +12,7 @@ import { languages } from "../types";
 import { seedPair } from "../i18n/seedData";
 import { hydrateDailyProgress } from "../core/dailyGoal";
 import { DAY, emptySchedule } from "../core/srsEngine";
+import { validStudyActivity } from "../core/stats";
 const KEY = "erudite:v3";
 export const defaultSettings: Settings = {
   interfaceLanguage: "en",
@@ -29,7 +31,7 @@ type StoredWord = WordCard & {
   nextReviewDate?: number;
   easeFactor?: number;
 };
-type StoredData = {
+type StoredData = StudyActivity & {
   version: number;
   settings: Settings;
   reviewOrder?: number;
@@ -42,6 +44,7 @@ function validStored(value: unknown, version: 1 | 2 | 3): boolean {
   const s = d?.settings;
   if (
     d?.version !== version ||
+    !validStudyActivity(d) ||
     !s ||
     ![s.interfaceLanguage, s.sourceLanguage, s.targetLanguage].every((l) =>
       languages.includes(l),
@@ -222,6 +225,8 @@ export function hydrateData(value: unknown): AppData {
   );
   return {
     version: 3,
+    activityLog: { ...d.activityLog },
+    recallModes: { ...d.recallModes },
     settings,
     pairs,
     reviewOrder: legacy ? studied.length : d.reviewOrder!,
@@ -249,4 +254,13 @@ export function saveData(data: AppData): boolean {
   } catch {
     return false;
   }
+}
+
+export function serializeBackup(data: AppData): string {
+  return JSON.stringify({
+    ...data,
+    activityLog: data.activityLog ?? {},
+    recallModes: data.recallModes ?? {},
+    settings: { ...data.settings, geminiApiKey: undefined },
+  }, null, 2);
 }

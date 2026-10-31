@@ -62,7 +62,12 @@ export interface PairData {
   categories: Category[];
   savedArticles?: SavedArticle[];
 }
-export interface AppData {
+export type RecallMode = "SWIPE_ONLY" | "KEYBOARD" | "TILES";
+export interface StudyActivity {
+  activityLog?: Record<string, number>;
+  recallModes?: Partial<Record<RecallMode, number>>;
+}
+export interface AppData extends StudyActivity {
   version: 2 | 3;
   reviewOrder: number;
   dailyProgress?: DailyProgress;
@@ -75,4 +80,5 @@ export type Evaluation = "CORRECT" | "ASSISTED" | "INCORRECT";
 export type TypingInput = "KEYBOARD" | "TILES";
 export type StudySelection =
   | { kind: "word" | "category"; id: string }
-  | { kind: "categories"; ids: string[] };
+  | { kind: "categories"; ids: string[] }
+  | { kind: "words"; ids: string[] };

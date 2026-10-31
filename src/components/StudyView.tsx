@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type {
   Action,
+  StudyActivity,
   DailyProgress,
   Evaluation,
   Mode,
@@ -41,10 +42,11 @@ import { localDate, recordRecall, todayProgress } from "../core/dailyGoal";
 import { readUiState, uiBoolean, uiCount, uiObject, useUiKey, writeUiState } from "../hooks/useUiState";
 import { validateData } from "../services/storage";
 import { usePracticeViewport } from "../hooks/usePracticeViewport";
-interface Props {
+import { recordStudyActivity, validStudyActivity } from "../core/stats";
+interface Props extends StudyActivity {
   pair: PairData;
   settings: Settings;
-  update: (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress) => void;
+  update: (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress, activity?: StudyActivity) => void;
   dailyProgress?: DailyProgress;
   reviewOrder: number;
   t: T;
@@ -52,6 +54,7 @@ interface Props {
   initialSelection?: StudySelection;
 }
 interface Undo {
+  activity?: StudyActivity;
   cardId: string;
   previousCardState: WordCard;
   previousQueueIndex: number;
@@ -78,6 +81,8 @@ export function StudyView({
   initialSelection,
   reviewOrder,
   dailyProgress,
+  activityLog,
+  recallModes,
 }: Props) {
   const snapshotKey = useUiKey(`study:${settings.studyMode}:${JSON.stringify(initialSelection ?? null)}`);
   const pairSignature = useMemo(() => snapshotKey ? JSON.stringify(pair.words.map((word) => [
@@ -95,9 +100,9 @@ export function StudyView({
       (value.evaluation === null || ["CORRECT", "ASSISTED", "INCORRECT"].includes(value.evaluation as string)) &&
       (value.inputPractice === undefined || uiBoolean(value.inputPractice)) && ["KEYBOARD", "TILES"].includes(value.typingInput as string) && Array.isArray(value.history) && value.history.length <= 10000 &&
       value.history.every((item) => uiObject(item) && typeof item.cardId === "string" && uiObject(item.previousCardState) &&
-        item.previousCardState.id === item.cardId && validQueue(item.queue) && uiCount(item.previousQueueIndex) &&
+        item.previousCardState.id === item.cardId && (item.activity === undefined || (uiObject(item.activity) && validStudyActivity(item.activity))) && validQueue(item.queue) && uiCount(item.previousQueueIndex) &&
         uiCount(item.reviewOrder) && validMode(item.mode) && uiCount(item.completed) && uiCount(item.initialSessionCount) &&
-        validateData({ version: 2, reviewOrder: item.reviewOrder, dailyProgress: item.dailyProgress, settings,
+        validateData({ version: 2, reviewOrder: item.reviewOrder, dailyProgress: item.dailyProgress, ...((item.activity as StudyActivity | undefined) ?? {}), settings,
           pairs: { [`${settings.sourceLanguage}-${settings.targetLanguage}`]: { words: [item.previousCardState], categories: pair.categories } } })));
   });
   const [day, setDay] = useState(localDate);
@@ -222,6 +227,7 @@ export function StudyView({
         mode,
         completed,
         initialSessionCount,
+        activity: { activityLog: { ...activityLog }, recallModes: { ...recallModes } },
         dailyProgress: progress,
       },
     ]);
@@ -231,7 +237,7 @@ export function StudyView({
     };
     update(nextPair, reviewOrder + 1, a === "know" || a === "master"
       ? recordRecall(progress, `${settings.sourceLanguage}-${settings.targetLanguage}`, card.id)
-      : progress);
+      : progress, recordStudyActivity({ activityLog, recallModes }, typing && inputPractice ? typingInput : "SWIPE_ONLY"));
     const continuation = continueQueue(
       queue,
       nextPair,
@@ -258,6 +264,7 @@ export function StudyView({
       },
       previous.reviewOrder,
       todayProgress(previous.dailyProgress),
+      previous.activity,
     );
     setQueue(previous.queue);
     setStarted(true);
@@ -276,6 +283,7 @@ export function StudyView({
       cardId: card.id, previousCardState: card, previousQueueIndex: 0,
       queue: [...queue], reviewOrder, mode, completed, initialSessionCount,
       dailyProgress: progress,
+      activity: { activityLog: { ...activityLog }, recallModes: { ...recallModes } },
     }]);
     const remaining = queue.filter((id) => id !== card.id);
     setQueue(remaining);
@@ -498,7 +506,7 @@ export function StudyView({
                     card={card}
                     settings={settings}
                     inputMode={typingInput}
-                    onInputModeChange={setTypingInput}
+                    onInputModeChange={(mode) => { setTypingInput(mode); setInputPractice(true); }}
                     evaluation={evaluation}
                     onEvaluate={evaluate}
                     onAssistance={() => { assistedTurn.current = true; }}

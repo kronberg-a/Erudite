@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AppData, Language, Settings } from "../types";
 import { languageNames, languages } from "../types";
 import type { T, TextKey } from "../i18n/translations";
-import { hydrateData } from "../services/storage";
+import { hydrateData, serializeBackup } from "../services/storage";
 import { configureGemini, getGeminiConnectionState, subscribeGeminiConnection, testGeminiConnection } from "../services/gemini";
 import type { GeminiConnectionState } from "../services/gemini";
 const connectionLabels: Record<GeminiConnectionState, TextKey> = {
@@ -65,8 +65,7 @@ export function SettingsView({
     value.trim() !== "" && Number.isInteger(Number(value)) &&
     Number(value) >= 1 && Number(value) <= 50;
   const download = () => {
-    const backup = { ...data, settings: { ...data.settings, geminiApiKey: undefined } };
-    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+    const blob = new Blob([serializeBackup(data)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -238,6 +237,7 @@ export function SettingsView({
           <section className="panel settings-panel data-panel">
             <h2>{t("data")}</h2>
             <p className="muted">{t("local")}</p>
+            <p className="form-message">{t("backupContents")}</p>
             <button className="outline-button" onClick={download}>
               <Download size={17} />
               {t("export")}

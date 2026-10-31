@@ -269,7 +269,7 @@ describe("new and reset word practice", () => {
     clickText("Start practice");
     const before: AppData = JSON.parse(localStorage.getItem("erudite:v3")!);
     clickText("Open word in folder");
-    expect(container.querySelector<HTMLSelectElement>('.library-toolbar select')?.value).toBe('core');
+    expect(container.querySelector<HTMLInputElement>('.vocabulary-folder-options input[value="core"]')?.checked).toBe(true);
     const wordInput = container.querySelector<HTMLInputElement>('dialog [aria-label="Word in the learning language"]')!;
     expect(wordInput.value).toBe('Reset me');
     expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();

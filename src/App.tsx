@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  BarChart2,
   ArrowRight,
   BookOpen,
   BookOpenText,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import type {
   AppData,
+  StudyActivity,
   DailyProgress,
   Language,
   PairData,
@@ -24,6 +26,7 @@ import { translator } from "./i18n/translations";
 import { seedPair } from "./i18n/seedData";
 import { loadData, pairKey, saveData } from "./services/storage";
 import { StudyView } from "./components/StudyView";
+import { StatsView } from "./components/StatsView";
 import { CategoryView } from "./components/CategoryView";
 import { SettingsView } from "./components/SettingsView";
 import { ReaderView } from "./components/ReaderView";
@@ -31,12 +34,12 @@ import { AboutView } from "./components/AboutView";
 import { BrandLogo } from "./components/BrandLogo";
 import { configureGemini, initializeGemini } from "./services/gemini";
 import { UiStateScope, clearPairUiState, readUiState, uiCount, uiObject, useStoredUiState, writeUiState } from "./hooks/useUiState";
-type Page = "learn" | "categories" | "reader" | "settings" | "about";
+type Page = "learn" | "categories" | "reader" | "settings" | "about" | "stats";
 const initial = loadData();
 export default function App() {
   const [data, setData] = useState<AppData>(initial.data);
   const [storageError, setStorageError] = useState(initial.error);
-  const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings", "about"].includes(value as string));
+  const [page, setPage] = useStoredUiState<Page>("page", "learn", (value) => ["learn", "categories", "reader", "settings", "about", "stats"].includes(value as string));
   const [generation, setGeneration] = useState(0);
   const [libraryWord, setLibraryWord] = useState<{ pairKey: string; wordId: string } | null>(null);
   const [practiceRequest, setPracticeRequest] = useStoredUiState<{
@@ -44,7 +47,7 @@ export default function App() {
     selection: StudySelection;
   } | null>("practice", null, (value) => value === null || (uiObject(value) && typeof value.pairKey === "string" && uiObject(value.selection) &&
     ((["word", "category"].includes(value.selection.kind as string) && typeof value.selection.id === "string") ||
-      (value.selection.kind === "categories" && Array.isArray(value.selection.ids) && value.selection.ids.every((id) => typeof id === "string")))));
+      (["categories", "words"].includes(value.selection.kind as string) && Array.isArray(value.selection.ids) && value.selection.ids.every((id) => typeof id === "string")))));
   const main = useRef<HTMLElement | null>(null);
   const s = data.settings;
   useEffect(() => {
@@ -92,9 +95,11 @@ export default function App() {
         },
       };
     });
-  const update = (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress) =>
+  const update = (p: PairData, reviewOrder?: number, dailyProgress?: DailyProgress, activity?: StudyActivity) =>
     setData((d) => ({
       ...d,
+      activityLog: activity?.activityLog ?? d.activityLog,
+      recallModes: activity?.recallModes ?? d.recallModes,
       reviewOrder: reviewOrder ?? d.reviewOrder,
       dailyProgress: dailyProgress ?? d.dailyProgress,
       pairs: { ...d.pairs, [key]: p },
@@ -111,6 +116,7 @@ export default function App() {
     { id: "learn", icon: BookOpen },
     { id: "categories", icon: Layers },
     { id: "reader", icon: BookOpenText },
+    { id: "stats", icon: BarChart2 },
     { id: "settings", icon: Settings2 },
     { id: "about", icon: Info },
   ] as const;
@@ -234,6 +240,8 @@ export default function App() {
               pair={pair}
               settings={s}
               reviewOrder={data.reviewOrder}
+              activityLog={data.activityLog}
+              recallModes={data.recallModes}
               dailyProgress={data.dailyProgress}
               update={update}
               t={t}
@@ -254,6 +262,7 @@ export default function App() {
               onPractice={practice}
             />
           )}{" "}
+          {page === "stats" && <StatsView pair={pair} data={data} settings={s} t={t} />}
           {page === "settings" && (
             <SettingsView
               data={data}

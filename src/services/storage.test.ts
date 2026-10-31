@@ -207,3 +207,17 @@ describe("continuous data and migration", () => {
     expect(() => hydrateData(bad)).toThrow();
   });
 });
+
+it("preserves and validates optional statistics across hydration and backup round trips", () => {
+  const original = { ...data, activityLog: { "2026-10-31": 8 }, recallModes: { SWIPE_ONLY: 3, KEYBOARD: 4, TILES: 1 } };
+  expect(validateData(original)).toBe(true);
+  const hydrated = hydrateData(JSON.parse(JSON.stringify(original)));
+  expect(hydrated.activityLog).toEqual(original.activityLog);
+  expect(hydrated.recallModes).toEqual(original.recallModes);
+  expect(hydrateData(hydrated)).toEqual(hydrated);
+  expect(hydrateData(data).activityLog).toEqual({});
+  for (const patch of [{ activityLog: [] }, { activityLog: { "2026-02-30": 4 } }, { activityLog: { "2026-10-31": -1 } }, { recallModes: { SWIPE_ONLY: "4" } }, { recallModes: { UNKNOWN: 1 } }]) {
+    expect(validateData({ ...original, ...patch })).toBe(false);
+    expect(() => hydrateData({ ...original, ...patch })).toThrow();
+  }
+});

@@ -12,7 +12,9 @@ export function selectedWords(
 ): WordCard[] {
   if (selection)
     return pair.words.filter((word) =>
-      selection.kind === "categories"
+      selection.kind === "words"
+        ? selection.ids.includes(word.id)
+        : selection.kind === "categories"
         ? word.categoryIds.some((id) => selection.ids.includes(id))
         : selection.kind === "word"
         ? word.id === selection.id
@@ -31,6 +33,9 @@ export function buildQueue(
   mode: Mode,
 ): string[] {
   const available = selectedWords({ words, categories });
+  return queueForWords(available, mode);
+}
+function queueForWords(available: WordCard[], mode: Mode): string[] {
   const now = Date.now();
   const fresh = available.filter((w) => w.status === "NEW");
   const progress = available
@@ -62,11 +67,7 @@ export function buildStudyQueue(
     const word = pair.words.find((w) => w.id === selection.id);
     if (word?.status === "MASTERED") return [word.id];
   }
-  return buildQueue(
-    selectedWords(pair, selection),
-    pair.categories.map((c) => ({ ...c, isActiveForStudy: true })),
-    mode,
-  );
+  return queueForWords(selectedWords(pair, selection), mode);
 }
 export function advanceQueue(
   queue: string[],

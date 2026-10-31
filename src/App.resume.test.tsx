@@ -48,11 +48,10 @@ it("restores the current page and scroll position after refresh", async () => {
 });
 it("restores vocabulary search and folder filters", async () => {
   await render(); click("Vocabulary"); fill('.search-field input', "Hallo");
-  const select = container.querySelector<HTMLSelectElement>('.library-toolbar select')!;
-  act(() => { select.value = "core"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  act(() => container.querySelector<HTMLInputElement>('.vocabulary-folder-options input[value="core"]')!.click());
   await refresh();
   expect(container.querySelector<HTMLInputElement>('.search-field input')!.value).toBe("Hallo");
-  expect(container.querySelector<HTMLSelectElement>('.library-toolbar select')!.value).toBe("core");
+  expect(container.querySelector<HTMLInputElement>('.vocabulary-folder-options input[value="core"]')!.checked).toBe(true);
   expect(container.querySelectorAll('.vocabulary-table .word-row')).toHaveLength(1);
 });
 it("keeps restored filters separate for each language pair", async () => {
