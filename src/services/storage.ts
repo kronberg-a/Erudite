@@ -264,3 +264,47 @@ export function serializeBackup(data: AppData): string {
     settings: { ...data.settings, geminiApiKey: undefined },
   }, null, 2);
 }
+
+/** Import adds content; the device remains authoritative for existing data. */
+export function mergeBackup(current: AppData, incoming: AppData): AppData {
+  const pairs = { ...current.pairs };
+  let reviewOrder = current.reviewOrder;
+  const normalized = (text: string) => text.normalize("NFC").trim().replace(/\s+/gu, " ").toLowerCase();
+  for (const [key, imported] of Object.entries(incoming.pairs)) {
+    const existing = pairs[key] ?? { words: [], categories: [] };
+    const categories = [...existing.categories];
+    const folderIds = new Map<string, string>();
+    for (const folder of imported.categories) {
+      const match = categories.find((category) => category.id === folder.id ||
+        languages.every((language) => normalized(category.name[language]) === normalized(folder.name[language])));
+      if (match) folderIds.set(folder.id, match.id);
+      else { categories.push(folder); folderIds.set(folder.id, folder.id); }
+    }
+    const words = [...existing.words];
+    const wordIndices = new Map(words.map((word, index) => [normalized(word.targetWord), index]));
+    const usedWordIds = new Set(words.map((word) => word.id));
+    for (const word of imported.words) {
+      const categoryIds = [...new Set(word.categoryIds.flatMap((id) => folderIds.has(id) ? [folderIds.get(id)!] : []))];
+      const index = wordIndices.get(normalized(word.targetWord));
+      if (index !== undefined) {
+        const previous = words[index];
+        const missing = categoryIds.filter((id) => !previous.categoryIds.includes(id));
+        if (missing.length) words[index] = { ...previous, categoryIds: [...previous.categoryIds, ...missing] };
+        continue;
+      }
+      const id = usedWordIds.has(word.id) ? crypto.randomUUID() : word.id;
+      usedWordIds.add(id);
+      wordIndices.set(normalized(word.targetWord), words.length);
+      words.push({ ...word, id, categoryIds });
+      reviewOrder = Math.max(reviewOrder, word.lastReviewedOrder);
+    }
+    const savedArticles = [...existing.savedArticles ?? []];
+    for (const article of imported.savedArticles ?? []) {
+      if (savedArticles.some((saved) => saved.text.normalize("NFC").trim() === article.text.normalize("NFC").trim() ||
+        (article.url && saved.url === article.url))) continue;
+      savedArticles.push({ ...article, id: savedArticles.some((saved) => saved.id === article.id) ? crypto.randomUUID() : article.id });
+    }
+    pairs[key] = { ...existing, words, categories, savedArticles };
+  }
+  return { ...current, pairs, reviewOrder };
+}

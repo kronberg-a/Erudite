@@ -408,20 +408,18 @@ export function TypingCard({
       ) : (
         <div ref={resultRef} className="typing-result" tabIndex={-1} role="region"
           aria-label={t(evaluation === "CORRECT" ? "correct" : evaluation === "ASSISTED" ? "assisted" : "incorrect")}>
-          <div className="card-source-prompt"><h2 lang={settings.sourceLanguage}>{card.translations.join(" · ")}</h2></div>
+          <div className="card-source-prompt">
+            <h2 lang={settings.sourceLanguage}>{card.translations.join(" · ")}</h2>
+          </div>
           <div className="typing-correct-word card-prompt">
+            <div className="practice-word-row">
             <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
+            <button className="audio-button" aria-label={t("listen")} onClick={onListen}><Volume2 size={18} /></button>
+            </div>
             <div className="phonetic-row">
             {card.transcription && (
               <p className="transcription">{card.transcription}</p>
             )}
-            <button
-              className="audio-button"
-              aria-label={t("listen")}
-              onClick={onListen}
-            >
-              <Volume2 size={18} />
-            </button>
             </div>
             {audioError && <small role="status">{t("audioError")}</small>}
           </div>

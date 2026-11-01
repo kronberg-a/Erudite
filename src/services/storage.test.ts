@@ -3,6 +3,7 @@ import {
   defaultSettings,
   hydrateData,
   loadData,
+  mergeBackup,
   saveData,
   validateData,
 } from "./storage";
@@ -15,6 +16,51 @@ const data = {
   settings: defaultSettings,
   pairs: { "en-de": seedPair("en", "de") },
 };
+
+it("merges only missing content, remaps folder and word IDs, and is safe to repeat", () => {
+  const current = hydrateData(data);
+  const pair = current.pairs["en-de"];
+  pair.words = [{ ...pair.words[0], status: "LEARNING", step: 2, repCount: 17 }];
+  current.settings = { ...current.settings, geminiApiKey: "keep-private", theme: "dark" };
+  current.activityLog = { "2026-11-01": 7 };
+  current.recallModes = { KEYBOARD: 7 };
+  const before = structuredClone(current);
+  const imported = hydrateData(data);
+  const importedPair = imported.pairs["en-de"];
+  importedPair.categories = [{ ...pair.categories[0], id: "same-folder-new-id", isActiveForStudy: false }];
+  importedPair.words = [
+    { ...pair.words[0], id: "duplicate-word", targetWord: ` ${pair.words[0].targetWord.toUpperCase()} `, translations: ["overwrite"], step: 0, repCount: 0, categoryIds: ["same-folder-new-id"] },
+    { ...pair.words[0], targetWord: "café", categoryIds: ["same-folder-new-id"], lastReviewedOrder: 500 },
+    { ...pair.words[0], id: "unicode-duplicate", targetWord: "cafe\u0301", categoryIds: ["same-folder-new-id"] },
+  ];
+  imported.pairs["en-fr"] = seedPair("en", "fr");
+  pair.savedArticles = [{ id: "article", title: "Current", text: "Saved content", url: "", createdAt: 1 }];
+  before.pairs["en-de"].savedArticles = structuredClone(pair.savedArticles);
+  importedPair.savedArticles = [
+    { ...pair.savedArticles[0], id: "duplicate-article", title: "Do not overwrite" },
+    { ...pair.savedArticles[0], title: "Missing", text: "Different content" },
+  ];
+  const incomingBefore = structuredClone(imported);
+  const merged = mergeBackup(current, imported);
+  expect(current).toEqual(before);
+  expect(imported).toEqual(incomingBefore);
+  expect(merged.settings).toEqual(before.settings);
+  expect(merged.activityLog).toEqual(before.activityLog);
+  expect(merged.recallModes).toEqual(before.recallModes);
+  expect(merged.dailyProgress).toEqual(before.dailyProgress);
+  expect(merged.reviewOrder).toBe(500);
+  const result = merged.pairs["en-de"];
+  expect(result.categories).toEqual(before.pairs["en-de"].categories);
+  expect(result.words).toHaveLength(2);
+  expect(result.words[0]).toEqual({ ...before.pairs["en-de"].words[0], categoryIds: [...new Set([...before.pairs["en-de"].words[0].categoryIds, pair.categories[0].id])] });
+  expect(result.words[1].id).not.toBe(result.words[0].id);
+  expect(result.words[1]).toMatchObject({ targetWord: "café", categoryIds: [pair.categories[0].id], lastReviewedOrder: 500 });
+  expect(result.savedArticles).toHaveLength(2);
+  expect(result.savedArticles![0]).toEqual(pair.savedArticles[0]);
+  expect(result.savedArticles![1].id).not.toBe("article");
+  expect(merged.pairs["en-fr"].words).toHaveLength(32);
+  expect(mergeBackup(merged, imported)).toEqual(merged);
+});
 afterEach(() => vi.unstubAllGlobals());
 it("hydrates legacy omissions and round-trips saved articles in backups", () => {
   expect(hydrateData(data).pairs["en-de"].savedArticles).toEqual([]);

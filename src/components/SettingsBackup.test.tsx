@@ -170,8 +170,8 @@ it("accepts older backups without activity tracking while preserving saved learn
   const { activityLog: _activity, recallModes: _modes, ...oldBackup } = data;
   await importBackup(JSON.stringify(oldBackup));
   const restored: AppData = restore.mock.calls[0][0];
-  expect(restored.activityLog).toEqual({});
-  expect(restored.recallModes).toEqual({});
+  expect(restored.activityLog).toEqual(data.activityLog);
+  expect(restored.recallModes).toEqual(data.recallModes);
   expect(restored.pairs["en-de"].words).toEqual(data.pairs["en-de"].words);
 });
 it("rejects malformed statistics and leaves current data untouched", async () => {
@@ -184,4 +184,20 @@ it("rejects malformed statistics and leaves current data untouched", async () =>
   expect(host.querySelector('[role="alert"]')?.textContent).toContain(
     translator("en")("importError"),
   );
+});
+it("imports a missing word without replacing current vocabulary or settings", async () => {
+  settings();
+  const pair = data.pairs["en-de"];
+  const imported = structuredClone(data);
+  imported.settings.theme = data.settings.theme === "dark" ? "light" : "dark";
+  imported.pairs["en-de"].words = [
+    { ...pair.words[0], translations: ["Changed in backup"], repCount: 0 },
+    { ...pair.words[0], id: "missing-word", targetWord: "Importwort" },
+  ];
+  await importBackup(JSON.stringify(imported));
+  const merged: AppData = restore.mock.lastCall![0];
+  expect(merged.settings).toEqual(data.settings);
+  expect(merged.pairs["en-de"].words.slice(0, pair.words.length)).toEqual(pair.words);
+  expect(merged.pairs["en-de"].words.at(-1)).toMatchObject({ id: "missing-word", targetWord: "Importwort" });
+  expect(merged.pairs["en-de"].words).toHaveLength(pair.words.length + 1);
 });

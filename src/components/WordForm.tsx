@@ -322,6 +322,7 @@ export function WordForm({
           <span>{t("autoTranslate")}</span><span className="word-check-track" aria-hidden="true" />
         </button>
         </div>
+        <div className="word-form-core" data-keyboard-group>
         <div className="word-entry-field">
         <label htmlFor={`${id}-word`}>
           <span className="label-action">
@@ -399,6 +400,7 @@ export function WordForm({
             }}
           />
         </label>
+        </div>
         {alternatives.length > 0 && (
           <div className="translation-chips">
             {alternatives.map((a) => (

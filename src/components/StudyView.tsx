@@ -525,12 +525,14 @@ export function StudyView({
                     {revealed ? (
                       <div className="card-answer">
                         <div className="card-prompt">
+                          <div className="practice-word-row">
                           <h2 lang={settings.targetLanguage}>{card.targetWord}</h2>
-                          {card.transcription && <p className="transcription">{card.transcription}</p>}
                           <button className="audio-button" aria-label={t("listen")} onClick={(event) => {
                             event.stopPropagation();
                             setAudioError(!speak(card.targetWord, settings.targetLanguage));
                           }}><Volume2 size={18} /></button>
+                          </div>
+                          {card.transcription && <p className="transcription">{card.transcription}</p>}
                           {audioError && <small role="status">{t("audioError")}</small>}
                         </div>
                       </div>

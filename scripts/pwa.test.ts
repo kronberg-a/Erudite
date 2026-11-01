@@ -19,6 +19,8 @@ describe("Android installation and offline shell", () => {
   it("provides standalone launch and correctly sized Android icons", () => {
     const manifest = JSON.parse(readFileSync("public/manifest.webmanifest", "utf8"));
     expect(manifest).toMatchObject({ name: "Erudite", start_url: "./", scope: "./", display: "standalone", prefer_related_applications: false });
+    // Android WebAPK versions that pin native bar colors need a dark fallback.
+    expect(manifest).toMatchObject({ background_color: "#090D16", theme_color: "#090D16" });
     for (const icon of manifest.icons) {
       const data = readFileSync(`public/${icon.src.slice(2)}`);
       expect(data.subarray(1, 4).toString()).toBe("PNG");

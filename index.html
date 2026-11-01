@@ -7,6 +7,19 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#F8FAFC" />
+    <meta name="color-scheme" content="light" />
+    <script>
+      // Apply the saved palette before the app renders or Android paints its bars.
+      try {
+        const theme = JSON.parse(localStorage.getItem("erudite:v3") || "null")?.settings?.theme === "dark" ? "dark" : "light";
+        const background = theme === "dark" ? "#090D16" : "#F8FAFC";
+        document.documentElement.classList.toggle("dark", theme === "dark");
+        document.documentElement.style.colorScheme = theme;
+        document.documentElement.style.backgroundColor = background;
+        document.querySelector('meta[name="theme-color"]').content = background;
+        document.querySelector('meta[name="color-scheme"]').content = theme;
+      } catch { /* The app can still launch when local storage is unavailable. */ }
+    </script>
     <meta
       name="description"
       content="Erudite. A considered space to build your vocabulary, one word at a time."

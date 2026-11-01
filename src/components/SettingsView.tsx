@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { AppData, Language, Settings } from "../types";
 import { languageNames, languages } from "../types";
 import type { T, TextKey } from "../i18n/translations";
-import { hydrateData, serializeBackup } from "../services/storage";
+import { hydrateData, mergeBackup, serializeBackup } from "../services/storage";
 import { configureGemini, getGeminiConnectionState, subscribeGeminiConnection, testGeminiConnection } from "../services/gemini";
 import type { GeminiConnectionState } from "../services/gemini";
 const connectionLabels: Record<GeminiConnectionState, TextKey> = {
@@ -52,6 +52,8 @@ export function SettingsView({
   t: T;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const currentData = useRef(data);
+  currentData.current = data;
   const [error, setError] = useState(false);
   const s = data.settings;
   const connection = useSyncExternalStore(subscribeGeminiConnection, getGeminiConnectionState);
@@ -262,7 +264,7 @@ export function SettingsView({
                 try {
                   if (file.size > 10_000_000) throw new Error("Too large");
                   const d = hydrateData(JSON.parse(await file.text()));
-                  if (window.confirm(t("importConfirm"))) restore(d);
+                  if (window.confirm(t("importConfirm"))) restore(mergeBackup(currentData.current, d));
                 } catch {
                   setError(true);
                 } finally {

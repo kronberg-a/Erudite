@@ -35,10 +35,18 @@ export function useKeyboardViewport() {
       for (let pane = field.parentElement; pane && pane !== document.body; pane = pane.parentElement) {
         if (!/(auto|scroll)/u.test(getComputedStyle(pane).overflowY) || pane.scrollHeight <= pane.clientHeight) continue;
         const box = pane.getBoundingClientRect();
-        const bounds = field.getBoundingClientRect();
+        let bounds = field.getBoundingClientRect();
         const visibleTop = Math.max(top + 12, box.top + 12);
         const visibleBottom = Math.min(top + height - 12, box.bottom - 12);
         if (visibleBottom <= visibleTop) return;
+        // Related word/translation inputs should remain visible together when
+        // the available pane can fit the group. Tiny viewports still prioritize
+        // the focused field instead of scrolling it out of view.
+        const group = field.closest<HTMLElement>("[data-keyboard-group]");
+        if (group && pane.contains(group)) {
+          const groupBounds = group.getBoundingClientRect();
+          if (groupBounds.height > 0 && groupBounds.height <= visibleBottom - visibleTop) bounds = groupBounds;
+        }
         if (bounds.top < visibleTop || bounds.height > visibleBottom - visibleTop) pane.scrollTop += bounds.top - visibleTop;
         else if (bounds.bottom > visibleBottom) pane.scrollTop += bounds.bottom - visibleBottom;
         return;

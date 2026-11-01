@@ -86,12 +86,15 @@ export default function App() {
     if (initial.error && data === initial.data) return;
     setStorageError(!saveData(data));
   }, [data]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", s.theme === "dark");
+    document.documentElement.style.colorScheme = s.theme;
+    document.documentElement.style.backgroundColor = s.theme === "dark" ? "#090D16" : "#F8FAFC";
     document.documentElement.lang = s.interfaceLanguage;
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", s.theme === "dark" ? "#090D16" : "#F8FAFC");
+    document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", s.theme);
   }, [s.theme, s.interfaceLanguage]);
   const changeSettings = (patch: Partial<Settings>) =>
     setData((d) => {

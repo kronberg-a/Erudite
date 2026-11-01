@@ -61,6 +61,31 @@ it("reveals another field when focus moves while the keyboard is already open", 
   expect(next.getBoundingClientRect().bottom).toBeLessThanOrEqual(pane.getBoundingClientRect().bottom - 12);
   expect(next.value).toBe("A longer example");
 });
+it("keeps the word and translation group visible when either input is focused", () => {
+  const group = document.createElement("div");
+  group.dataset.keyboardGroup = "";
+  field.before(group); group.append(field);
+  const translation = document.createElement("input");
+  translation.value = "house"; group.append(translation);
+  vi.spyOn(group, "getBoundingClientRect").mockImplementation(() => new DOMRect(20, 450 - pane.scrollTop, 340, 180));
+  vi.spyOn(translation, "getBoundingClientRect").mockImplementation(() => new DOMRect(20, 570 - pane.scrollTop, 340, 48));
+  field.focus(); frame(); keyboard(320);
+  expect(group.getBoundingClientRect().top).toBeGreaterThanOrEqual(pane.getBoundingClientRect().top + 12);
+  expect(group.getBoundingClientRect().bottom).toBeLessThanOrEqual(pane.getBoundingClientRect().bottom - 12);
+  const scroll = pane.scrollTop;
+  translation.focus(); frame();
+  expect(pane.scrollTop).toBe(scroll);
+  expect(document.activeElement).toBe(translation);
+  expect(translation.value).toBe("house");
+});
+it("prioritizes the focused input if a related group cannot fit in a very short viewport", () => {
+  const group = document.createElement("div"); group.dataset.keyboardGroup = "";
+  field.before(group); group.append(field);
+  vi.spyOn(group, "getBoundingClientRect").mockImplementation(() => new DOMRect(20, 450 - pane.scrollTop, 340, 180));
+  field.focus(); frame(); keyboard(240);
+  expect(field.getBoundingClientRect().top).toBeGreaterThanOrEqual(pane.getBoundingClientRect().top + 12);
+  expect(field.getBoundingClientRect().bottom).toBeLessThanOrEqual(pane.getBoundingClientRect().bottom - 12);
+});
 it("recognizes the keyboard when both the layout and visual viewports resize", () => {
   field.focus(); frame();
   vi.stubGlobal("innerHeight", 320);

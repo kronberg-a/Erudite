@@ -328,6 +328,7 @@
 
 :root {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -366,6 +367,7 @@
 }
 body {
   margin: 0;
+  background: var(--bg);
 }
 button,
 a,
@@ -1512,6 +1514,7 @@ button.word-detail:hover strong {
   flex-direction: column;
 }
 .word-form-toggles { display: grid; gap: 2px; }
+.word-form-core { display: flex; flex-direction: column; gap: 23px; flex-shrink: 0; min-width: 0; }
 .word-entry-field { display: flex; flex-direction: column; gap: 6px; }
 .word-input-wrap { position: relative; display: block; width: 100%; }
 .word-input-wrap input { padding-right: 44px; }
@@ -2649,6 +2652,10 @@ body:has(.study-view) { overflow: hidden; overscroll-behavior: none; }
 .study-view[data-active="true"] .flashcard { justify-content: flex-start; }
 .card-source-prompt { flex: 0 0 auto; min-height: 62px; padding: 0 6% 18px 13%; }
 .card-source-prompt h2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font: inherit; font-size: clamp(22px, 6.5cqw, 28px); font-weight: 500; line-height: 1.3; letter-spacing: -.6px; }
+.practice-word-row { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
+.practice-word-row h2 { flex: 1; min-width: 0; }
+.study-view[data-active="true"] .card-prompt:has(.practice-word-row) { padding-right: 6%; }
+.study-view[data-active="true"] .practice-word-row .audio-button { position: static; transform: none; align-self: center; }
 .study-view[data-active="true"] .card-answer { padding: 0; }
 .study-view[data-active="true"] .card-answer .card-prompt, .study-view[data-active="true"] .typing-result .card-prompt { min-height: 112px; padding-top: 26px; justify-content: flex-start; }
 .study-view[data-active="true"] .card-prompt h2 { font-size: clamp(24px, 7cqw, 30px); }
