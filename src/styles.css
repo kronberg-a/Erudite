@@ -877,16 +877,19 @@ kbd {
   display: flex;
   gap: 6px;
   align-items: center;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 .session-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 6px;
+  min-height: 44px;
+  padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  font-size: 10px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 .session-dot {
@@ -1202,6 +1205,9 @@ kbd {
   color: var(--muted);
   opacity: 1;
 }
+.study-view[data-active] .session-bar :is(.session-undo, .end-session) { width: 52px; height: 52px; min-width: 52px; min-height: 52px; }
+.study-view .session-bar :is(.session-undo, .end-session) svg { width: 22px; height: 22px; }
+.study-view .session-count { flex-wrap: wrap; justify-content: flex-end; max-width: 64px; }
 .end-session:hover,
 .session-undo:not(:disabled):hover {
   background: var(--soft);

@@ -142,10 +142,12 @@
   .study-view[data-active="true"] .session-bar { min-height: 44px; }
   /* Keep the area above the answer stable across keyboard/height breakpoints. */
   .main-shell:has(.study-view[data-active="true"]) .topbar { height: 48px; }
-  .main-content:has(.study-view[data-active="true"]) { padding-top: 8px; }
+  /* Match the 12px workspace gap below the controls for exact centering. */
+  .main-content:has(.study-view[data-active="true"]) { padding-top: 12px; scrollbar-width: none; }
+  .main-content:has(.study-view[data-active="true"])::-webkit-scrollbar { display: none; }
   .study-view[data-active="true"] .study-workspace { gap: 12px; }
   .study-view[data-active="true"] .card-top { flex: 0 0 72px; height: 72px; padding: 12px 6% 8px 5%; }
-  .study-view[data-active="true"] .typing-flashcard .card-top { flex-basis: 72px; height: 72px; }
+  .study-view[data-active="true"] .typing-flashcard .card-top { flex-basis: 72px; height: 72px; padding: 12px 6% 8px 5%; }
   .study-view[data-active="true"] .typing-prompt { min-height: 62px; padding-bottom: 18px; }
   .study-view[data-active="true"] .typing-entry { margin-top: 12px; margin-bottom: 8px; }
   .study-view[data-active="true"] .action-dock { height: 54px; }
