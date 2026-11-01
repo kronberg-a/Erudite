@@ -122,6 +122,7 @@ export function StudyView({
   const [reverse, setReverse] = useState(false);
   const [audioError, setAudioError] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(resume?.evaluation ?? null);
+  const [feedbackPending, setFeedbackPending] = useState(false);
   const [typingInput, setTypingInput] = useState<TypingInput>(resume?.typingInput ?? "KEYBOARD");
   const [inputPractice, setInputPractice] = useState(resume?.inputPractice === true);
   const [turn, setTurn] = useState(resume?.turn ?? 0);
@@ -179,6 +180,7 @@ export function StudyView({
     if (goalReached) goalButton.current?.focus({ preventScroll: true });
   }, [goalReached]);
   const resetTurn = () => {
+    setFeedbackPending(false);
     assistedTurn.current = false;
     setInputPractice(false);
     setEvaluation(null);
@@ -203,7 +205,7 @@ export function StudyView({
     setReverse(false);
   };
   const action = (a: Action) => {
-    if (!started || goalReached || !card || committedTurn.current === turn || (typing && !revealed && a === "master"))
+    if (!started || goalReached || feedbackPending || !card || committedTurn.current === turn || (typing && !revealed && a === "master"))
       return;
     committedTurn.current = turn;
     setLastAction(a);
@@ -505,6 +507,7 @@ export function StudyView({
                     onInputModeChange={(mode) => { setTypingInput(mode); setInputPractice(true); }}
                     evaluation={evaluation}
                     onEvaluate={evaluate}
+                    onFeedbackChange={setFeedbackPending}
                     onAssistance={() => { assistedTurn.current = true; }}
                     onListen={() =>
                       setAudioError(

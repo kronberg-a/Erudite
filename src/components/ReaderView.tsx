@@ -416,12 +416,16 @@ export function ReaderView({ pair, settings, update, onPractice, t }: {
           {counters(article.text)}
           {paragraphs?.map(({ text, start }) => {
             let position = start;
-            return <p key={start} data-offset={start}>{wordParts(text).map((part, i) => {
+            const parts = wordParts(text).map((part, i) => {
               const at = position; position += part.length;
-              if (i % 2 !== 1) return part;
+              return { part, at, selected: i % 2 === 1 && picking && picked.some((word) => word.offset === at) };
+            });
+            return <p key={start} data-offset={start}>{parts.map(({ part, at, selected }, i) => {
+              if (i % 2 !== 1) return parts[i - 1]?.selected && parts[i + 1]?.selected
+                ? <span key={i} className="reader-selection-gap">{part}</span> : part;
               const wordLevel = cefrMap?.get(at);
               const highlightedLevel = wordLevel && activeLevels.includes(wordLevel) ? wordLevel : undefined;
-              return <button type="button" key={i} className="reader-word" data-offset={at} data-cefr={highlightedLevel} data-picked={picking && picked.some((word) => word.offset === at)} aria-pressed={picking ? picked.some((word) => word.offset === at) : entries.some((row) => row.key === wordKey(part, settings.targetLanguage) || (!row.group && row.offset === at))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
+              return <button type="button" key={i} className="reader-word" data-offset={at} data-cefr={highlightedLevel} data-picked={selected} data-join-before={selected && !!parts[i - 2]?.selected} data-join-after={selected && !!parts[i + 2]?.selected} aria-pressed={picking ? selected : entries.some((row) => row.key === wordKey(part, settings.targetLanguage) || (!row.group && row.offset === at))} onClick={(event) => wordClick(part, at, event.detail)} onDoubleClick={(event) => {
                 event.preventDefault();
                 // Touch browsers may emit dblclick after the second click already started selection.
                 if (!picking) startPicking([{ word: part, offset: at }]);

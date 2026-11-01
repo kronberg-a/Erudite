@@ -77,6 +77,13 @@
 }
 .typing-attempts span { background: var(--border); }
 .typing-attempts span.used { background: var(--negative); }
+.typing-attempts span.successful { background: var(--positive); }
+.typing-answer-box { position: relative; flex-shrink: 0; }
+.typing-card .typing-entry .typing-answer-box > :is(.typing-input, .tile-answer) { padding-right: 40px; }
+.typing-outcome { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); display: flex; pointer-events: none; }
+.typing-outcome.correct { color: var(--positive); }
+.typing-outcome.incorrect { color: var(--negative); }
+.typing-entry[data-pending="true"] { pointer-events: none; }
 .typing-input[aria-invalid="true"] {
   border-color: var(--negative);
 }
@@ -2243,7 +2250,10 @@ button.word-detail:hover strong {
 .reader-picking, .reader-picking .reader-word { user-select: none; -webkit-user-select: none; }
 .reader-word { touch-action: manipulation; }
 .reader-picking .reader-word[aria-pressed="false"] { background: transparent; }
-.reader-word[data-picked="true"] { background: var(--accent); color: var(--surface); box-shadow: 0 2px 0 var(--accent); }
+.reader-word[data-picked="true"], .reader-selection-gap { display: inline-block; vertical-align: baseline; line-height: 1.5; background: var(--accent); color: var(--surface); box-shadow: 0 2px 0 var(--accent); padding: 0; }
+.reader-selection-gap { white-space: pre; }
+.reader-word[data-join-before="true"] { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.reader-word[data-join-after="true"] { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .reader-selection-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 24px)); display: flex; align-items: center; gap: 4px; padding: 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 20px #0f172a18; z-index: 35; }
 .reader-selection-preview { flex: 1; min-width: 0; padding: 0 4px; }
 .reader-selection-preview span, .reader-selection-preview small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

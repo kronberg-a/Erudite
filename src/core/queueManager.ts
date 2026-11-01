@@ -87,11 +87,13 @@ export function continueQueue(
   selection?: StudySelection,
   assisted = false,
 ): { queue: string[]; mode: Mode; switched: boolean } {
-  // Membership is fixed at session start. Keep learning/failed/assisted
-  // cards in this session, but retire successfully learned or reviewed cards.
+  // A successful unassisted recall completes this word for the session.
+  // Learning steps still accumulate across sessions; mistakes and assisted
+  // answers return to this queue for another attempt.
   const ids = new Set(selectedWords(pair, selection).map((word) => word.id));
   const finished = !assisted &&
-    (updated.status === "REVIEW" || updated.status === "MASTERED");
+    (updated.status === "REVIEW" || updated.status === "MASTERED" ||
+      (updated.status === "LEARNING" && updated.step > 0));
   const next = finished
     ? queue.slice(1).filter((id) => id !== updated.id)
     : advanceQueue(queue, updated, distance);

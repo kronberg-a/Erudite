@@ -210,6 +210,8 @@ describe("new and reset word practice", () => {
     expect(
       container.querySelector('[aria-label="Your answer"]'),
     ).toBeNull();
+    expect(container.textContent).toContain("Session complete.");
+    clickText("Build a new session");
     clickLabel("Keyboard");
     expect(container.querySelector('.typing-input')).not.toBeNull();
   });

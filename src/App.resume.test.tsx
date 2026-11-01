@@ -21,7 +21,7 @@ beforeEach(() => {
   localStorage.setItem("erudite:v3", JSON.stringify({ version: 3, reviewOrder: 0, settings: defaultSettings, pairs: { "en-de": pair } }));
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 const stored = (): AppData => JSON.parse(localStorage.getItem("erudite:v3")!);
 async function render() { const { default: App } = await import("./App"); await act(async () => root.render(<App />)); }
 async function refresh() { act(() => root.unmount()); root = createRoot(container); vi.resetModules(); await render(); }
@@ -90,22 +90,31 @@ it("restores the active card, queue and undo without committing another recall",
   expect(stored().reviewOrder).toBe(0);
 });
 it("preserves typed answers and failed attempts, and never commits an evaluated answer on refresh", async () => {
+  vi.useFakeTimers();
   const data = stored(); data.settings.studyMode = "TYPE_ONLY";
   data.pairs["en-de"].words = [{ ...data.pairs["en-de"].words[0], status: "LEARNING", step: 1, repCount: 1 }];
   localStorage.setItem("erudite:v3", JSON.stringify(data));
   await render(); click("Start practice");
   click("Keyboard");
+  expect(container.querySelector('.recall-choices')).toBeNull();
   fill('input[aria-label="Your answer"]', "wrong");
   act(() => container.querySelector('.typing-controls .primary-button')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
   expect(container.querySelector('.typing-attempts')!.getAttribute("aria-valuenow")).toBe("2");
   expect(container.querySelectorAll(".typing-attempts .used")).toHaveLength(1);
   await refresh();
   expect(container.querySelector<HTMLInputElement>('input[aria-label="Your answer"]')!.value).toBe("wrong");
+  expect(container.querySelector('.recall-choices')).toBeNull();
   expect(container.querySelector('.typing-attempts')!.getAttribute("aria-valuenow")).toBe("2");
   expect(container.querySelectorAll(".typing-attempts .used")).toHaveLength(1);
   fill('input[aria-label="Your answer"]', "Hallo");
   act(() => container.querySelector<HTMLButtonElement>('.typing-controls .primary-button')!.click());
   const before = stored();
+  await refresh();
+  expect(container.querySelector('.typing-answer-box .typing-outcome.correct')).not.toBeNull();
+  expect(container.querySelector('.typing-result')).toBeNull();
+  act(() => vi.advanceTimersByTime(600));
+  expect(container.querySelector('.typing-outcome')).toBeNull();
+  expect(container.querySelector('.typing-attempts')).toBeNull();
   await refresh();
   expect(container.querySelector('.action-bar .preselected')).not.toBeNull();
   expect(stored()).toEqual(before);

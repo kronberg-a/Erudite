@@ -38,10 +38,14 @@ function button(name: string) {
   if (!result) throw new Error(`Missing button: ${name}`);
   return result;
 }
-function click(name: string) {
-  act(() => button(name).click());
+function settleFeedback() {
+  if (container.querySelector('.typing-entry[data-pending="true"]')) act(() => vi.advanceTimersByTime(600));
 }
-function key(element: Element, key: string, extra: KeyboardEventInit = {}) {
+function click(name: string, settle = true) {
+  act(() => button(name).click());
+  if (settle) settleFeedback();
+}
+function key(element: Element, key: string, extra: KeyboardEventInit = {}, settle = true) {
   act(() =>
     element.dispatchEvent(
       new KeyboardEvent("keydown", {
@@ -53,6 +57,7 @@ function key(element: Element, key: string, extra: KeyboardEventInit = {}) {
       }),
     ),
   );
+  if (settle) settleFeedback();
 }
 function input(value: string) {
   if (!container.querySelector(".typing-input")) click("Keyboard");
@@ -206,7 +211,7 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector('.typing-input')).toBeNull();
     expect(updates).not.toHaveBeenCalled();
   });
-  it("keeps all three recall actions available on an automatic typing front", () => {
+  it("hides the three choices after selecting tiles on an automatic typing front", () => {
     setup({ status: "LEARNING", step: 1 }, "mixed", [], false);
     expect(container.querySelector(".typing-entry")).toBeNull();
     expect(container.querySelector(".typing-controls")).toBeNull();
@@ -214,10 +219,9 @@ describe("typing review lifecycle", () => {
     expect(choices.querySelectorAll("button")).toHaveLength(3);
     act(() => choices.querySelectorAll<HTMLButtonElement>("button")[2].click());
     expect(container.querySelector(".tile-bank")).not.toBeNull();
-    act(() => choices.querySelectorAll<HTMLButtonElement>("button")[0].click());
-    expect(container.querySelector(".typing-input")).not.toBeNull();
-    act(() => choices.querySelectorAll<HTMLButtonElement>("button")[1].click());
-    expect(container.querySelector(".typing-correct-word")).not.toBeNull();
+    expect(container.querySelector(".recall-choices")).toBeNull();
+    expect(container.querySelector(".typing-input")).toBeNull();
+    expect(container.querySelector(".typing-correct-word")).toBeNull();
     expect(updates).not.toHaveBeenCalled();
   });
 
@@ -227,6 +231,7 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".card-prompt")).toBeNull();
     expect(container.querySelector('[aria-label="Listen to pronunciation"]')).toBeNull();
     click(control);
+    expect(container.querySelector(".recall-choices")).toBeNull();
     expect(container.querySelector(control === "Keyboard" ? ".typing-input" : ".tile-bank")).not.toBeNull();
     expect(updates).not.toHaveBeenCalled();
   });
@@ -244,6 +249,8 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".card-answer")?.textContent).toContain("café (noun)");
     click("Already know");
     expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
+    expect(container.textContent).toContain("Session complete.");
+    click("Build a new session");
     click("Keyboard");
     expect(container.querySelector(".typing-input")).not.toBeNull();
     expect(container.querySelector(".typing-correct-word")).toBeNull();
@@ -290,35 +297,30 @@ describe("typing review lifecycle", () => {
       total: container.querySelector('[role="progressbar"]')?.getAttribute("aria-valuemax"),
     };
   }
-  it("tracks session debt through learning, failure, assistance, graduation and undo", () => {
-    setup({ status: "NEW" });
+  it("tracks one successful recall per session, retries mistakes and assistance, and restores progress on undo", () => {
+    setup({ status: "LEARNING", step: 1 });
     expect(container.querySelector(".summary-grid")).toBeNull();
     expect(container.querySelector(".daily-goal-progress")).toBeNull();
-    expect(counter()).toMatchObject({ counts: ["1", "0", "0"], resolved: "0%", learning: "0%", remaining: "100%", total: "1" });
-    click("Already know");
     expect(counter()).toMatchObject({ counts: ["0", "1", "0"], resolved: "0%" });
     expect(container.querySelector(".session-attempt-count")).toBeNull();
     expect(container.querySelector(".session-remaining")).toBeNull();
     expect(parseFloat(counter().learning!)).toBeCloseTo(100 / 3);
     expect(parseFloat(counter().remaining!)).toBeCloseTo(200 / 3);
-    key(input("café"), "Enter"); commitGrade();
     const beforeFailure = counter();
-    expect(parseFloat(beforeFailure.learning!)).toBeCloseTo(200 / 3);
-    expect(parseFloat(beforeFailure.remaining!)).toBeCloseTo(100 / 3);
     key(input(""), "Escape"); commitGrade();
     expect(counter()).toMatchObject({ counts: ["0", "1", "0"], resolved: "0%", learning: "0%", remaining: "100%" });
-    expect(updates.mock.calls[2][0].words[0].step).toBe(0);
+    expect(updates.mock.calls[0][0].words[0].step).toBe(0);
     click("Undo");
     expect(counter()).toEqual(beforeFailure);
     key(input("caf"), "Tab"); key(input("café"), "Enter"); commitGrade();
     expect(counter()).toMatchObject({ counts: ["0", "1", "0"], resolved: "0%" });
-    expect(parseFloat(counter().learning!)).toBeCloseTo(200 / 3);
-    const beforeGraduation = counter();
+    expect(parseFloat(counter().learning!)).toBeCloseTo(100 / 3);
+    const beforeSuccess = counter();
     key(input("café"), "Enter"); commitGrade();
     expect(container.textContent).toContain("Session complete.");
     expect(counter()).toMatchObject({ counts: ["0", "0", "1"], resolved: "100%", learning: "0%", remaining: "0%", total: "1" });
     key(document.body, "z", { ctrlKey: true });
-    expect(counter()).toEqual(beforeGraduation);
+    expect(counter()).toEqual(beforeSuccess);
     click("End session");
     expect(container.querySelector(".progress-track")).toBeNull();
     expect(container.querySelector(".summary-grid")).not.toBeNull();
@@ -349,27 +351,24 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".page-heading")).toBeNull();
     expect(updates.mock.calls[1][0].words[0]).toEqual(original);
   });
-  it("keeps the chosen new mode through learning, ends at graduation, and supports cancellation", () => {
+  it("ends new mode after one correct recall and supports undo and cancellation", () => {
     setup({ status: "NEW" }, "new");
     expect(container.querySelector(".session-settings")).toBeNull();
-    for (let i = 0; i < 3; i++) {
-      if (i === 0) click("Already know");
-      else { key(input("café"), "Enter"); commitGrade(); }
-      expect(updates.mock.calls[i][0].words[0].step).toBe(i + 1);
-    }
+    click("Already know");
+    expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "LEARNING", step: 1, repCount: 1 });
     expect(container.querySelector("article")).toBeNull();
     expect(container.textContent).toContain("Session complete.");
     expect(container.querySelector<HTMLInputElement>('input[name="session-mode"]:checked')?.value).toBe("new");
     expect(button("Start practice").disabled).toBe(true);
     click("Undo");
     expect(container.querySelector(".session-settings")).toBeNull();
-    expect(updates.mock.calls[3][0].words[0]).toMatchObject({ status: "LEARNING", step: 2, repCount: 2 });
+    expect(updates.mock.calls[1][0].words[0]).toMatchObject({ status: "NEW", step: 0, repCount: 0 });
     click("End session");
     expect(container.querySelector(".session-settings")).not.toBeNull();
     expect(container.querySelector("article")).toBeNull();
     expect(button("Undo").disabled).toBe(true);
     expect(container.textContent).not.toContain("Session complete.");
-    expect(button("Start practice").disabled).toBe(true);
+    expect(button("Start practice").disabled).toBe(false);
   });
   it("hides the answer/audio, masks every occurrence, and waits after correct submission", () => {
     setup();
@@ -469,7 +468,7 @@ describe("typing review lifecycle", () => {
       key(input("wrong"), "Enter");
       expect(container.querySelector('.typing-attempts')?.getAttribute('aria-valuenow')).toBe(String(3 - miss));
       expect(container.querySelectorAll('.typing-attempts .used')).toHaveLength(miss);
-      expect(container.querySelector('.typing-input')?.nextElementSibling).toBe(container.querySelector('.typing-attempts'));
+      expect(container.querySelector('.typing-input')?.parentElement?.nextElementSibling).toBe(container.querySelector('.typing-attempts'));
       expect(container.querySelector(".typing-feedback")).toBeNull();
       expect(container.querySelector("article")?.textContent).not.toContain(
         "café",
@@ -480,10 +479,16 @@ describe("typing review lifecycle", () => {
       expect(speak).not.toHaveBeenCalled();
       expect(updates).not.toHaveBeenCalled();
     }
-    click("Check");
-    expect(
-      container.querySelector(".flashcard.grade-incorrect"),
-    ).not.toBeNull();
+    click("Check", false);
+    expect(container.querySelector('.typing-input')).not.toBeNull();
+    expect(container.querySelector('.typing-answer-box .typing-outcome.incorrect')).not.toBeNull();
+    expect(container.querySelectorAll('.typing-attempts .used')).toHaveLength(3);
+    expect(container.querySelector('.typing-attempts .successful')).toBeNull();
+    expect(container.querySelector('.typing-outcome.incorrect')?.getAttribute('aria-label')).toBe('Not quite');
+    expect(speak).not.toHaveBeenCalled();
+    settleFeedback();
+    expect(container.querySelector('.flashcard.grade-incorrect')).not.toBeNull();
+    expect(container.querySelector('.typing-outcome')).toBeNull();
     expect(container.querySelector('.typing-attempts')).toBeNull();
     expect(speak).toHaveBeenCalledTimes(1);
     expect(updates).not.toHaveBeenCalled();
@@ -516,6 +521,28 @@ describe("typing review lifecycle", () => {
       expect(container.querySelector('[aria-label="Your answer"]')).toBeNull();
     },
   );
+  it.each([0, 1, 2])("marks the successful attempt green after %i misses and displays a check", (misses) => {
+    setup();
+    for (let miss = 0; miss < misses; miss++) key(input("wrong"), "Enter");
+    key(input("café"), "Enter", {}, false);
+    expect(container.querySelector('.typing-answer-box .typing-outcome.correct')).not.toBeNull();
+    expect(container.querySelector('.typing-outcome.correct')?.getAttribute('aria-label')).toBe('Correct');
+    const attempts = Array.from(container.querySelectorAll('.typing-attempts span'));
+    expect(attempts.map((attempt) => attempt.className)).toEqual(
+      [0, 1, 2].map((index) => index < misses ? 'used' : index === misses ? 'successful' : ''),
+    );
+    expect(container.querySelector('.typing-outcome.incorrect')).toBeNull();
+    expect(updates).not.toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
+    click("I know", false);
+    expect(updates).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(599));
+    expect(container.querySelector('.typing-input')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(container.querySelector('.typing-result')).not.toBeNull();
+    expect(container.querySelector('.typing-outcome')).toBeNull();
+    expect(container.querySelector('.typing-attempts')).toBeNull();
+  });
   it("keeps input settings unavailable after hints and incorrect attempts", () => {
     setup();
     key(input("wrong"), "Enter");
@@ -539,21 +566,20 @@ describe("typing review lifecycle", () => {
     key(input("café"), "Enter");
     expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
   });
-  it("switches keyboard and tiles without clearing mistakes or hint usage", () => {
+  it("keeps keyboard mode locked through mistakes and hints", () => {
     setup({ status: "LEARNING", step: 1 });
     key(input("wrong"), "Enter");
-    const modes = container.querySelector(".typing-recall-choices")!;
-    act(() => modes.querySelectorAll<HTMLButtonElement>("button")[2].click());
-    expect(container.querySelector(".tile-bank")).not.toBeNull();
-    expect(document.activeElement).toBe(container.querySelector(".tile-answer"));
+    expect(container.querySelector(".recall-choices")).toBeNull();
+    expect(container.querySelector(".tile-bank")).toBeNull();
     expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("2");
-    act(() => modes.querySelectorAll<HTMLButtonElement>("button")[0].click());
     expect(document.activeElement).toBe(container.querySelector("input"));
+    key(input("caf"), "Tab");
+    expect(container.querySelector(".recall-choices")).toBeNull();
     key(input("café"), "Enter");
     expect(container.querySelector(".flashcard.grade-assisted")).not.toBeNull();
   });
   it("keeps the mobile tile preference when a failed card returns", () => {
-    setup();
+    setup({}, "mixed", [], false);
     act(() => container.querySelectorAll<HTMLButtonElement>(".typing-recall-choices button")[2].click());
     key(container.querySelector(".tile-answer")!, "Escape");
     expect(speak).toHaveBeenCalledTimes(1);
@@ -561,6 +587,7 @@ describe("typing review lifecycle", () => {
     expect(container.querySelector(".tile-bank")).toBeNull();
     click("Letter tiles");
     expect(container.querySelector(".tile-bank")).not.toBeNull();
+    expect(container.querySelector(".recall-choices")).toBeNull();
     expect(container.querySelector('input[aria-label="Your answer"]')).toBeNull();
     expect(container.querySelector(".typing-attempts")?.getAttribute("aria-valuenow")).toBe("3");
     expect(updates.mock.calls[0][0].words[0]).toMatchObject({ status: "LEARNING", step: 0 });

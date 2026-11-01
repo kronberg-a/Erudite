@@ -326,6 +326,23 @@ function pointerClick(word: string, detail = 1) {
   const button = Array.from(container.querySelectorAll(".reader-word")).find((node) => node.textContent === word)!;
   act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail })));
 }
+it("joins adjacent selections through spaces and punctuation and splits them on deselection", () => {
+  paste("Hallo, Welt und neue Sprache.\nHallo Welt.");
+  click("Select words"); click("Welt"); click("Hallo"); click("und"); click("Sprache");
+  const joinedText = () => Array.from(container.querySelectorAll(".reader-selection-gap")).map((node) => node.textContent);
+  expect(joinedText()).toEqual([", ", " "]);
+  const selected = container.querySelectorAll('.reader-word[data-picked="true"]');
+  expect(selected[0].getAttribute("data-join-after")).toBe("true");
+  expect(selected[1].getAttribute("data-join-before")).toBe("true");
+  expect(selected[1].getAttribute("data-join-after")).toBe("true");
+  expect(selected[2].getAttribute("data-join-after")).toBe("false");
+  expect(selected[3].getAttribute("data-join-before")).toBe("false");
+  expect(container.querySelector('.reader-body p[data-offset="0"]')!.textContent).toBe("Hallo, Welt und neue Sprache.");
+  click("Welt");
+  expect(joinedText()).toEqual([]);
+  action("Cancel");
+  expect(container.querySelectorAll(".reader-selection-gap")).toHaveLength(0);
+});
 it("selects separated verb parts in reading order and saves the translated sentence", async () => {
   vi.mocked(translate).mockImplementation(async (text) => ({ primary: text === "bewege hin" ? "move towards" : "I move towards the exit.", alternatives: [] }));
   paste("Ich bewege mich zum Ausgang hin.");

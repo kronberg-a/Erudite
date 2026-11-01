@@ -182,6 +182,7 @@ describe("daily word goal", () => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     click("Check");
+    act(() => vi.advanceTimersByTime(600));
     expect(container.textContent).not.toContain("Daily goal reached");
     expect(stored().reviewOrder).toBe(0);
     click("I know");

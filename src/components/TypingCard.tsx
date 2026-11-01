@@ -22,12 +22,14 @@ interface Props {
   onInputModeChange?: (mode: TypingInput) => void;
   evaluation: Evaluation | null;
   onEvaluate: (result: Evaluation) => void;
+  onFeedbackChange?: (pending: boolean) => void;
   onAssistance?: () => void;
   onListen: () => void;
   audioError: boolean;
   t: T;
 }
 interface TypingSnapshot {
+  pendingEvaluation?: Evaluation | null;
   inputChosen?: boolean;
   turn: string; input: string; inputMode: TypingInput; failedInput: string | null;
   usedHint: boolean; failedAttempts: number; tiles: { char: string; id: number }[]; selected: number[];
@@ -81,6 +83,7 @@ export function TypingCard({
   onInputModeChange,
   evaluation,
   onEvaluate,
+  onFeedbackChange,
   onAssistance,
   onListen,
   audioError,
@@ -92,6 +95,7 @@ export function TypingCard({
     return readUiState<TypingSnapshot | null>(snapshotKey, null, (value) => uiObject(value) && value.turn === resumeTurn && uiString(value.input) &&
       ["KEYBOARD", "TILES"].includes(value.inputMode as string) && (value.failedInput === null || uiString(value.failedInput)) &&
       (value.inputChosen === undefined || uiBoolean(value.inputChosen)) && uiBoolean(value.usedHint) && uiCount(value.failedAttempts) && value.failedAttempts <= 3 &&
+      (value.pendingEvaluation === undefined || value.pendingEvaluation === null || ["CORRECT", "ASSISTED", "INCORRECT"].includes(value.pendingEvaluation as string)) &&
       Array.isArray(value.tiles) && value.tiles.length === characters.length && value.tiles.every((tile) => uiObject(tile) && uiCount(tile.id) && characters[tile.id] === tile.char) &&
       new Set(value.tiles.map((tile) => tile.id)).size === characters.length && Array.isArray(value.selected) &&
       value.selected.every((id) => uiCount(id) && id < characters.length) && new Set(value.selected).size === value.selected.length);
@@ -119,13 +123,25 @@ export function TypingCard({
   const inputRef = useRef<HTMLInputElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const submitted = useRef(!!evaluation);
+  const [pendingEvaluation, setPendingEvaluation] = useState<Evaluation | null>(evaluation ? null : resume?.pendingEvaluation ?? null);
+  const [feedback, setFeedback] = useState<"correct" | "incorrect" | null>(resume?.pendingEvaluation ? resume.pendingEvaluation === "INCORRECT" ? "incorrect" : "correct" : null);
+  const submitted = useRef(!!evaluation || !!pendingEvaluation);
+  const evaluateCallback = useRef(onEvaluate);
+  evaluateCallback.current = onEvaluate;
+  useEffect(() => {
+    if (!pendingEvaluation || evaluation) return;
+    const timer = window.setTimeout(() => evaluateCallback.current(pendingEvaluation), 600);
+    return () => window.clearTimeout(timer);
+  }, [pendingEvaluation, evaluation]);
+  useEffect(() => {
+    onFeedbackChange?.(!!pendingEvaluation && !evaluation);
+  }, [pendingEvaluation, evaluation, onFeedbackChange]);
   useEffect(() => {
     if (evaluation) resultRef.current?.focus({ preventScroll: true });
   }, [evaluation]);
   useEffect(() => {
-    if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected });
-  }, [snapshotKey, resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected]);
+    if (resumeTurn) writeUiState(snapshotKey, { turn: resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected, pendingEvaluation });
+  }, [snapshotKey, resumeTurn, inputChosen, input, inputMode, failedInput, usedHint, failedAttempts, tiles, selected, pendingEvaluation]);
   useEffect(() => {
     if (!evaluation && inputChosen) {
       if (inputMode === "KEYBOARD") inputRef.current?.focus({ preventScroll: true });
@@ -138,6 +154,8 @@ export function TypingCard({
     }
   }, [inputMode, evaluation, inputChosen]);
   const chooseInput = (value: string) => {
+    if (submitted.current) return;
+    setFeedback(null);
     setFailedInput(null);
     setInput(value);
     const available = [...tiles];
@@ -178,6 +196,7 @@ export function TypingCard({
           attemptCount.current,
         );
     if (!giveUp && result === "INCORRECT") {
+      setFeedback("incorrect");
       onAssistance?.();
       attemptCount.current += 1;
       setFailedAttempts(attemptCount.current);
@@ -189,7 +208,11 @@ export function TypingCard({
       }
     }
     submitted.current = true;
-    onEvaluate(result);
+    if (giveUp) onEvaluate(result);
+    else {
+      setFeedback(result === "INCORRECT" ? "incorrect" : "correct");
+      setPendingEvaluation(result);
+    }
   };
   const keydown = (event: KeyboardEvent) => {
     if (
@@ -220,6 +243,12 @@ export function TypingCard({
       submit();
     }
   };
+  const correctSubmission = feedback === "correct";
+  const outcomeIcon = feedback && <span key={`${failedAttempts}-${feedback}`} className={`typing-outcome ${feedback}`} role="img" aria-label={t(feedback)}>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path pathLength="1" d={feedback === "correct" ? "M5 12l4 4L19 6" : "M6 6l12 12M18 6L6 18"} />
+    </svg>
+  </span>;
   const attemptsBar = (
     <div
         id={attemptStatusId}
@@ -230,7 +259,7 @@ export function TypingCard({
         aria-valuemax={3}
         aria-valuenow={3 - failedAttempts}
       >
-        {[0, 1, 2].map((attempt) => <span key={attempt} className={attempt < failedAttempts ? "used" : undefined} aria-hidden="true" />)}
+        {[0, 1, 2].map((attempt) => <span key={attempt} className={attempt < failedAttempts ? "used" : correctSubmission && attempt === failedAttempts ? "successful" : undefined} aria-hidden="true" />)}
     </div>
   );
   return (
@@ -241,25 +270,26 @@ export function TypingCard({
             <p lang={settings.sourceLanguage} className="typing-translation">{card.translations.join(" · ")}</p>
             <p className="typing-instruction">{t("typePrompt")}</p>
           </div>
-          <div className="recall-choices typing-recall-choices">
-            <button type="button" aria-label={t("keyboard")} title={t("keyboard")} aria-pressed={inputChosen && inputMode === "KEYBOARD"} onClick={() => {
+          {!inputChosen && <div className="recall-choices typing-recall-choices">
+            <button type="button" disabled={!!pendingEvaluation} aria-label={t("keyboard")} title={t("keyboard")} aria-pressed={inputChosen && inputMode === "KEYBOARD"} onClick={() => {
               setInputChosen(true); setInputMode("KEYBOARD"); onInputModeChange?.("KEYBOARD"); focusAnswer();
             }}><Keyboard size={22} /></button>
-            <button type="button" aria-label={t("reveal")} title={`${t("reveal")} (Esc)`} aria-keyshortcuts="Escape" onClick={() => submit(true)}><Eye size={22} /></button>
-            <button type="button" aria-label={t("tiles")} title={t("tiles")} aria-pressed={inputChosen && inputMode === "TILES"} onClick={() => {
+            <button type="button" disabled={!!pendingEvaluation} aria-label={t("reveal")} title={`${t("reveal")} (Esc)`} aria-keyshortcuts="Escape" onClick={() => submit(true)}><Eye size={22} /></button>
+            <button type="button" disabled={!!pendingEvaluation} aria-label={t("tiles")} title={t("tiles")} aria-pressed={inputChosen && inputMode === "TILES"} onClick={() => {
               setInputChosen(true); setInputMode("TILES"); onInputModeChange?.("TILES"); focusAnswer();
             }}><Grid2X2 size={22} /></button>
-          </div>
+          </div>}
           {inputChosen && <>
-          <div className="typing-entry">
+          <div className="typing-entry" data-pending={!!pendingEvaluation}>
           {inputMode === "KEYBOARD" ? (
-            <>
+            <div className="typing-answer-box">
             <input
               ref={inputRef}
               className={`typing-input ${failedInput !== null ? "typing-mistake" : ""}`}
               type="text"
               enterKeyHint="done"
               value={input}
+              readOnly={!!pendingEvaluation}
               maxLength={200}
               lang={settings.targetLanguage}
               aria-label={t("answer")}
@@ -273,10 +303,11 @@ export function TypingCard({
               {...{ writingsuggestions: "false" }}
               onChange={(e) => chooseInput(e.target.value)}
             />
-            {attemptsBar}
-            </>
+            {outcomeIcon}
+            </div>
           ) : (
             <>
+              <div className="typing-answer-box">
               <div
                 ref={slotRef}
                 className={`tile-answer ${failedInput !== null ? "typing-mistake" : ""}`}
@@ -294,8 +325,11 @@ export function TypingCard({
                     <button
                       key={id}
                       className="letter-tile inserted"
+                      disabled={!!pendingEvaluation}
                       aria-label={`${t("removeLetter")}: ${tile.char === " " ? t("spaceCharacter") : tile.char}`}
                       onClick={() => {
+                        if (submitted.current) return;
+                        setFeedback(null);
                         setFailedInput(null);
                         const next = selected.filter((_, i) => i !== index);
                         setSelected(next);
@@ -312,6 +346,8 @@ export function TypingCard({
                   );
                 })}
               </div>
+              {outcomeIcon}
+              </div>
               {attemptsBar}
               <div className="tile-prompt">
               <div
@@ -323,11 +359,13 @@ export function TypingCard({
                   <button
                     key={tile.id}
                     className="letter-tile"
-                    disabled={selected.includes(tile.id)}
+                    disabled={!!pendingEvaluation || selected.includes(tile.id)}
                     aria-label={
                       tile.char === " " ? t("spaceCharacter") : tile.char
                     }
                     onClick={() => {
+                      if (submitted.current) return;
+                      setFeedback(null);
                       setFailedInput(null);
                       setSelected([...selected, tile.id]);
                       setInput(input + tile.char);
@@ -340,10 +378,12 @@ export function TypingCard({
               </div></div>
             </>
           )}
+          {inputMode === "KEYBOARD" && attemptsBar}
           </div>
           <div className="typing-controls">
             <button
               className="icon-button typing-hint"
+              disabled={!!pendingEvaluation}
               aria-label={t("hint")}
               title={`${t("hint")} (Tab)`}
               aria-keyshortcuts="Tab"
@@ -353,6 +393,7 @@ export function TypingCard({
             </button>
             <button
               className="primary-button"
+              disabled={!!pendingEvaluation}
               aria-keyshortcuts="Enter"
               onClick={() => submit()}
             >
@@ -360,6 +401,7 @@ export function TypingCard({
               <ArrowRight size={16} />
             </button>
 
+          <button type="button" className="icon-button typing-give-up" aria-label={t("giveUp")} title={t("giveUp")} disabled={!!pendingEvaluation} onClick={() => submit(true)}><Eye size={20} aria-hidden="true" /></button>
           </div>
           </>}
         </>
@@ -383,8 +425,6 @@ export function TypingCard({
             </div>
             {audioError && <small role="status">{t("audioError")}</small>}
           </div>
-
-
         </div>
       )}
 

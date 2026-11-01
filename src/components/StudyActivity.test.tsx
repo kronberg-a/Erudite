@@ -65,7 +65,7 @@ it.each(["Flashcards", "Keyboard", "Letter tiles", "Reveal"])(
       expect(updates).not.toHaveBeenCalled();
       if (mode === "Keyboard" || mode === "Letter tiles") click(mode);
       expect(updates).not.toHaveBeenCalled();
-      click("Reveal");
+      click(mode === "Keyboard" || mode === "Letter tiles" ? "Give up / reveal" : "Reveal");
       expect(updates).not.toHaveBeenCalled();
       click("Repeat");
       const recallMode =

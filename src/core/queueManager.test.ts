@@ -141,18 +141,21 @@ describe("session queues", () => {
       kind: "categories", ids: [],
     })).toEqual([]);
   });
-  it("keeps new words until graduation and then ends without switching mode", () => {
+  it("completes each successful word once per session while retaining learning steps across sessions", () => {
     let pair = { ...seed, words: [base] };
     let queue = [base.id];
     for (let tick = 1; tick <= 3; tick++) {
       const updated = reviewCard(pair.words[0], "know", settings, tick);
       pair = { ...pair, words: [updated] };
-      const result = continueQueue(queue, pair, "new", updated, 8);
-      expect(result.mode).toBe("new");
+      const mode = tick === 1 ? "new" : "review";
+      const result = continueQueue(queue, pair, mode, updated, 8);
+      expect(result.mode).toBe(mode);
       expect(result.switched).toBe(false);
-      queue = result.queue;
-      expect(queue).toEqual(tick < 3 ? [base.id] : []);
+      expect(result.queue).toEqual([]);
+      expect(updated.step).toBe(tick);
+      queue = buildStudyQueue(pair, "review");
     }
+    expect(pair.words[0]).toMatchObject({ status: "REVIEW", step: 3, repCount: 3 });
   });
   it.each(["REVIEW", "MASTERED"] as const)("retires a successful %s card without refilling completed words", (status) => {
     const card = { ...base, status, step: 3, nextReviewDate: Date.now() + 86400000 };
@@ -176,7 +179,7 @@ describe("session queues", () => {
     const selection = { kind: "categories" as const, ids: ["core"] };
     let queue = buildStudyQueue(pair, "mixed", selection);
     expect(queue).toEqual(["review", "new"]);
-    for (let tick = 1; tick <= 4; tick++) {
+    for (let tick = 1; tick <= 2; tick++) {
       const card = pair.words.find(w => w.id === queue[0])!;
       const updated = reviewCard(card, "know", settings, tick);
       pair = { ...pair, words: pair.words.map(w => w.id === card.id ? updated : w) };
@@ -184,6 +187,28 @@ describe("session queues", () => {
     }
     expect(queue).toEqual([]);
     expect(pair.words[2].repCount).toBe(0);
+  });
+  it.each(["mixed", "new", "review"] as const)("retries mistakes and assisted answers but removes successful learning cards in %s mode", (mode) => {
+    const original = { ...base, status: "LEARNING" as const, step: 1 };
+    const other = { ...base, id: "other" };
+    let pair = { ...seed, words: [original, other] };
+    let queue = [original.id, other.id];
+    const failure = reviewCard(original, "repeat", settings, 1);
+    pair = { ...pair, words: [failure, other] };
+    queue = continueQueue(queue, pair, mode, failure, 3).queue;
+    expect(queue).toEqual([other.id, original.id]);
+    const success = reviewCard(other, "know", settings, 2);
+    pair = { ...pair, words: [failure, success] };
+    queue = continueQueue(queue, pair, mode, success, 8).queue;
+    expect(queue).toEqual([original.id]);
+    const assisted = reviewCard(failure, "know", settings, 3, { assisted: true });
+    pair = { ...pair, words: [assisted, success] };
+    queue = continueQueue(queue, pair, mode, assisted, 4, undefined, true).queue;
+    expect(queue).toEqual([original.id]);
+    const corrected = reviewCard(assisted, "know", settings, 4);
+    pair = { ...pair, words: [corrected, success] };
+    expect(continueQueue(queue, pair, mode, corrected, 8).queue).toEqual([]);
+    expect(corrected).toMatchObject({ status: "LEARNING", step: 1, repCount: original.repCount + 3 });
   });
   it("supports endless failed drilling without date or cooldown checks", () => {
     let pair = {
