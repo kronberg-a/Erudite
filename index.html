@@ -16,6 +16,7 @@
         document.documentElement.classList.toggle("dark", theme === "dark");
         document.documentElement.style.colorScheme = theme;
         document.documentElement.style.backgroundColor = background;
+        if (document.body) document.body.style.backgroundColor = background;
         document.querySelector('meta[name="theme-color"]').content = background;
         document.querySelector('meta[name="color-scheme"]').content = theme;
       } catch { /* The app can still launch when local storage is unavailable. */ }

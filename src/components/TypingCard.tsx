@@ -291,8 +291,11 @@ export function TypingCard({
               value={input}
               readOnly={!!pendingEvaluation}
               maxLength={200}
-              lang={settings.targetLanguage}
+              lang="und"
               aria-label={t("answer")}
+              aria-autocomplete="none"
+              data-lpignore="true"
+              data-form-type="other"
               aria-invalid={failedInput !== null}
               aria-describedby={attemptStatusId}
               autoComplete="off"

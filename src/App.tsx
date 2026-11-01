@@ -89,11 +89,13 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", s.theme === "dark");
     document.documentElement.style.colorScheme = s.theme;
-    document.documentElement.style.backgroundColor = s.theme === "dark" ? "#090D16" : "#F8FAFC";
+    const bg = s.theme === "dark" ? "#090D16" : "#F8FAFC";
+    document.documentElement.style.backgroundColor = bg;
+    if (document.body) document.body.style.backgroundColor = bg;
     document.documentElement.lang = s.interfaceLanguage;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", s.theme === "dark" ? "#090D16" : "#F8FAFC");
+      ?.setAttribute("content", bg);
     document.querySelector('meta[name="color-scheme"]')?.setAttribute("content", s.theme);
   }, [s.theme, s.interfaceLanguage]);
   const changeSettings = (patch: Partial<Settings>) =>
